@@ -1,0 +1,769 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>eHealthCare - Bệnh nhân</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;600;700&display=swap');
+  :root {
+    --primary: #04C8CC; --primary-dark: #039EA1; --primary-light: #E0F9F9;
+    --secondary: #5E35B1; --error: #D32F2F; --error-light: #FFEBEE;
+    --success: #1B8A4C; --success-light: #E8F5E9; --warning: #E65100; --warning-light: #FFF3E0;
+    --text-main: #1A2332; --text-sub: #5A6A7A; --text-muted: #8A9AAA;
+    --bg: #F4F7FA; --surface: #FFFFFF; --border: #DDE3EA;
+    --radius: 12px; --shadow: 0 2px 12px rgba(4,200,204,0.08), 0 1px 4px rgba(0,0,0,0.06);
+    --shadow-hover: 0 6px 24px rgba(4,200,204,0.18), 0 2px 8px rgba(0,0,0,0.08);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Roboto', sans-serif; background: var(--bg); color: var(--text-main); min-height: 100vh; }
+
+  /* HEADER */
+  header { background: var(--surface); border-bottom: 2px solid var(--primary); padding: 0 28px; height: 60px; display: flex; align-items: center; gap: 14px; position: sticky; top: 0; z-index: 100; box-shadow: 0 2px 8px rgba(4,200,204,0.1); }
+  .logo { display: flex; align-items: center; gap: 10px; text-decoration: none; }
+  .logo-icon { width: 36px; height: 36px; background: var(--primary); border-radius: 10px; display: flex; align-items: center; justify-content: center; }
+  .logo-icon svg { width: 20px; height: 20px; fill: #fff; }
+  .logo-text { font-size: 16px; font-weight: 700; color: var(--text-main); }
+  .logo-text span { color: var(--primary); }
+  .header-right { margin-left: auto; display: flex; align-items: center; gap: 14px; }
+  .user-info { display: flex; align-items: center; gap: 10px; }
+  .user-avatar { width: 34px; height: 34px; border-radius: 50%; background: var(--primary); display: flex; align-items: center; justify-content: center; color: #fff; font-size: 12px; font-weight: 600; }
+  .user-name { font-size: 13px; font-weight: 500; color: var(--text-main); }
+  .btn-logout { padding: 6px 14px; border: 1.5px solid var(--border); border-radius: 8px; background: #fff; color: var(--text-sub); font-size: 12px; font-weight: 500; cursor: pointer; font-family: inherit; transition: all 0.2s; }
+  .btn-logout:hover { border-color: var(--error); color: var(--error); background: var(--error-light); }
+
+  /* LAYOUT */
+  .main-wrap { display: flex; min-height: calc(100vh - 60px); }
+  .sidebar { width: 250px; min-width: 250px; background: var(--surface); border-right: 1px solid var(--border); padding: 20px 12px; display: flex; flex-direction: column; gap: 4px; }
+  .sidebar-section { font-size: 10px; font-weight: 700; color: var(--text-muted); letter-spacing: 1px; text-transform: uppercase; margin: 12px 0 6px 10px; }
+  .sidebar-link { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 10px; font-size: 13px; color: var(--text-sub); cursor: pointer; transition: all 0.15s; text-decoration: none; border: none; background: none; width: 100%; font-family: inherit; }
+  .sidebar-link.active, .sidebar-link:hover { background: var(--primary-light); color: var(--primary-dark); font-weight: 500; }
+  .content { flex: 1; padding: 24px 28px; overflow-y: auto; max-width: 1200px; }
+
+  /* PAGES */
+  .page { display: none; animation: fadeIn 0.3s ease; }
+  .page.active { display: block; }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+  .page-title { font-size: 22px; font-weight: 700; color: var(--text-main); margin-bottom: 4px; }
+  .page-subtitle { font-size: 13px; color: var(--text-sub); margin-bottom: 20px; }
+
+  /* CARDS */
+  .card { background: var(--surface); border-radius: var(--radius); box-shadow: var(--shadow); border: 1px solid var(--border); overflow: hidden; margin-bottom: 20px; }
+  .card-header { padding: 16px 20px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 12px; background: #FAFCFF; }
+  .card-icon { width: 40px; height: 40px; border-radius: 10px; background: var(--primary-light); color: var(--primary); display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 18px; }
+  .card-title { font-size: 15px; font-weight: 700; color: var(--text-main); }
+  .card-desc { font-size: 12px; color: var(--text-sub); margin-top: 2px; }
+  .card-body { padding: 20px; }
+
+  /* BUTTONS */
+  .btn { padding: 10px 18px; border-radius: 10px; font-size: 13px; font-weight: 600; cursor: pointer; border: none; transition: all 0.2s; font-family: inherit; display: inline-flex; align-items: center; gap: 6px; }
+  .btn-primary { background: var(--primary); color: #fff; }
+  .btn-primary:hover:not(:disabled) { background: var(--primary-dark); box-shadow: 0 4px 14px rgba(4,200,204,0.35); transform: translateY(-1px); }
+  .btn-primary:disabled { background: var(--text-muted); cursor: not-allowed; opacity: 0.6; }
+  .btn-outline { background: transparent; border: 1.5px solid var(--primary); color: var(--primary); }
+  .btn-outline:hover { background: var(--primary-light); }
+  .btn-danger { background: var(--error); color: #fff; }
+  .btn-danger:hover { background: #B71C1C; }
+  .btn-ghost { background: transparent; border: 1px solid var(--border); color: var(--text-sub); }
+  .btn-ghost:hover { background: var(--bg); color: var(--text-main); }
+  .btn-sm { padding: 6px 12px; font-size: 12px; }
+
+  /* FORM */
+  .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .form-group2 { display: flex; flex-direction: column; gap: 5px; margin-bottom: 14px; }
+  .form-group2.full { grid-column: 1 / -1; }
+  .form-group2 label { font-size: 12px; font-weight: 500; color: var(--text-sub); }
+  .form-group2 input, .form-group2 select, .form-group2 textarea {
+    padding: 10px 14px; border: 1.5px solid var(--border); border-radius: 10px; font-size: 13px; font-family: inherit;
+    color: var(--text-main); outline: none; transition: all 0.2s; width: 100%;
+  }
+  .form-group2 input:focus, .form-group2 select:focus, .form-group2 textarea:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(4,200,204,0.12); }
+  .form-group2 textarea { resize: vertical; min-height: 80px; }
+  .required { color: var(--error); }
+
+  /* SPECIALTY GRID */
+  .specialty-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+  .spec-chip { border: 1.5px solid var(--border); border-radius: 12px; padding: 14px; cursor: pointer; transition: all 0.2s; display: flex; align-items: center; gap: 10px; background: var(--surface); }
+  .spec-chip:hover { border-color: var(--primary); background: var(--primary-light); transform: translateY(-2px); }
+  .spec-chip.selected { border-color: var(--primary); background: var(--primary-light); box-shadow: 0 0 0 3px rgba(4,200,204,0.15); }
+  .spec-emoji { font-size: 28px; }
+  .spec-name { font-size: 13px; font-weight: 600; }
+  .spec-check { margin-left: auto; width: 20px; height: 20px; border-radius: 50%; border: 2px solid var(--border); display: flex; align-items: center; justify-content: center; font-size: 11px; transition: all 0.2s; }
+  .spec-chip.selected .spec-check { background: var(--primary); border-color: var(--primary); color: #fff; }
+
+  /* DOCTOR LIST */
+  .doctor-list { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+  .doctor-card { border: 1.5px solid var(--border); border-radius: 12px; padding: 14px; cursor: pointer; display: flex; align-items: center; gap: 12px; transition: all 0.2s; }
+  .doctor-card:hover, .doctor-card.selected { border-color: var(--primary); background: var(--primary-light); }
+  .doctor-avatar { width: 48px; height: 48px; border-radius: 50%; background: var(--primary-light); display: flex; align-items: center; justify-content: center; font-size: 20px; flex-shrink: 0; }
+  .doctor-name { font-size: 14px; font-weight: 600; }
+  .doctor-title { font-size: 12px; color: var(--text-sub); }
+  .doctor-slots { margin-left: auto; font-size: 11px; background: var(--bg); padding: 4px 10px; border-radius: 20px; font-weight: 500; }
+  .doctor-card.selected .doctor-slots { background: var(--primary); color: #fff; }
+
+  /* SLOTS */
+  .slot-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+  .slot-btn { border: 1.5px solid var(--border); border-radius: 10px; padding: 10px 4px; text-align: center; cursor: pointer; font-size: 13px; font-weight: 600; background: var(--surface); font-family: inherit; transition: all 0.18s; }
+  .slot-btn:hover:not(:disabled) { border-color: var(--primary); color: var(--primary); background: var(--primary-light); }
+  .slot-btn.selected { background: var(--primary); border-color: var(--primary); color: #fff; }
+  .slot-btn:disabled { opacity: 0.5; cursor: not-allowed; color: var(--text-muted); }
+  .slot-btn.conflict { border-color: var(--error); color: var(--error); background: var(--error-light); }
+  .slot-btn small { display: block; font-size: 10px; font-weight: 400; margin-top: 2px; }
+
+  /* DATE TABS */
+  .date-tabs { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
+  .date-tab { border: 1.5px solid var(--border); border-radius: 10px; padding: 10px 16px; cursor: pointer; font-size: 13px; font-weight: 600; background: var(--surface); transition: all 0.2s; font-family: inherit; text-align: center; }
+  .date-tab:hover { border-color: var(--primary); color: var(--primary); }
+  .date-tab.active { background: var(--primary); border-color: var(--primary); color: #fff; }
+  .date-day { font-size: 11px; opacity: 0.85; display: block; margin-top: 2px; }
+
+  /* SUMMARY */
+  .summary-strip { background: var(--primary-light); border: 1.5px solid var(--primary); border-radius: 12px; padding: 16px 20px; margin-top: 16px; display: none; }
+  .summary-strip.show { display: block; }
+  .sum-title { font-size: 14px; font-weight: 700; color: var(--primary-dark); text-transform: uppercase; margin-bottom: 10px; padding-bottom: 8px; border-bottom: 1px dashed rgba(4,200,204,0.3); }
+  .sum-row { display: flex; gap: 16px; flex-wrap: wrap; align-items: center; padding: 8px 0; border-bottom: 1px solid rgba(4,200,204,0.15); }
+  .sum-row:last-child { border-bottom: none; }
+  .sum-label { font-size: 12px; color: var(--text-sub); }
+  .sum-val { font-size: 13px; font-weight: 700; }
+
+  /* QUEUE STATUS */
+  .queue-status { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 20px; }
+  .status-card { background: var(--surface); border-radius: var(--radius); padding: 20px; text-align: center; border: 1px solid var(--border); box-shadow: var(--shadow); }
+  .status-num { font-size: 36px; font-weight: 700; color: var(--primary); line-height: 1; }
+  .status-label { font-size: 12px; color: var(--text-sub); margin-top: 6px; }
+  .status-wait { font-size: 14px; color: var(--warning); font-weight: 600; margin-top: 4px; }
+
+  /* TICKET */
+  .ticket-card { background: linear-gradient(135deg, var(--primary-light), #fff); border: 2px solid var(--primary); border-radius: 16px; padding: 32px; text-align: center; max-width: 400px; margin: 0 auto; }
+  .ticket-num { font-size: 56px; font-weight: 700; color: var(--primary); line-height: 1; }
+  .ticket-label { font-size: 14px; color: var(--text-sub); margin-top: 8px; }
+  .ticket-room { font-size: 18px; font-weight: 700; color: var(--text-main); margin-top: 12px; }
+  .ticket-time { font-size: 12px; color: var(--text-muted); margin-top: 6px; }
+
+  /* TABLE */
+  .data-table { width: 100%; border-collapse: collapse; }
+  .data-table th { padding: 12px 16px; text-align: left; font-size: 11px; font-weight: 600; color: var(--primary-dark); letter-spacing: 0.5px; text-transform: uppercase; border-bottom: 1px solid var(--border); background: #F0FEFF; }
+  .data-table td { padding: 12px 16px; font-size: 13px; border-bottom: 1px solid var(--border); }
+  .data-table tr:hover td { background: #FAFCFF; }
+  .badge { display: inline-flex; align-items: center; gap: 5px; padding: 3px 10px; border-radius: 20px; font-size: 11px; font-weight: 500; }
+  .badge::before { content: ''; width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+  .badge-waiting { background: #FFF8E1; color: #F57F17; } .badge-waiting::before { background: #F57F17; }
+  .badge-active { background: #E8F5E9; color: #2E7D32; } .badge-active::before { background: #2E7D32; }
+  .badge-done { background: #E3F2FD; color: #1565C0; } .badge-done::before { background: #1565C0; }
+  .badge-cancel { background: #FFEBEE; color: #D32F2F; } .badge-cancel::before { background: #D32F2F; }
+
+  /* NOTIFICATIONS */
+  .notif-item { display: flex; align-items: flex-start; gap: 12px; padding: 14px 16px; border-bottom: 1px solid var(--border); transition: all 0.15s; }
+  .notif-item:hover { background: #FAFCFF; }
+  .notif-icon { width: 36px; height: 36px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 16px; flex-shrink: 0; }
+  .notif-icon.info { background: #E3F2FD; } .notif-icon.success { background: #E8F5E9; } .notif-icon.warning { background: #FFF3E0; } .notif-icon.error { background: #FFEBEE; }
+  .notif-title { font-size: 13px; font-weight: 600; color: var(--text-main); }
+  .notif-text { font-size: 12px; color: var(--text-sub); margin-top: 2px; }
+  .notif-time { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+
+  /* PROFILE */
+  .profile-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .profile-item { padding: 12px 14px; background: var(--bg); border-radius: 10px; }
+  .profile-label { font-size: 11px; color: var(--text-muted); font-weight: 500; margin-bottom: 3px; }
+  .profile-value { font-size: 13px; font-weight: 500; }
+
+  /* STEP BAR */
+  .step-bar { display: flex; align-items: center; gap: 0; margin-bottom: 24px; }
+  .step { display: flex; align-items: center; gap: 0; flex: 1; }
+  .step-circle { width: 30px; height: 30px; border-radius: 50%; background: var(--border); display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; color: var(--text-muted); flex-shrink: 0; transition: all 0.3s; }
+  .step.done .step-circle { background: var(--primary); color: #fff; }
+  .step.active .step-circle { background: var(--primary); color: #fff; box-shadow: 0 0 0 4px rgba(4,200,204,0.2); }
+  .step-label { font-size: 11px; font-weight: 500; color: var(--text-muted); margin-left: 6px; white-space: nowrap; }
+  .step.active .step-label, .step.done .step-label { color: var(--primary-dark); }
+  .step-line { flex: 1; height: 2px; background: var(--border); margin: 0 6px; transition: all 0.3s; }
+  .step.done .step-line { background: var(--primary); }
+
+  /* TOAST */
+  .toast-container { position: fixed; bottom: 24px; right: 24px; display: flex; flex-direction: column; gap: 10px; z-index: 999; }
+  .toast { background: var(--surface); border-left: 4px solid var(--success); box-shadow: 0 4px 16px rgba(0,0,0,0.15); padding: 12px 16px; border-radius: 8px; font-size: 13px; font-weight: 500; transform: translateX(120%); transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275); display: flex; align-items: center; gap: 8px; }
+  .toast.show { transform: translateX(0); }
+  .toast.error { border-left-color: var(--error); color: var(--error); }
+  .toast.warning { border-left-color: var(--warning); color: var(--warning); }
+
+  /* MODAL */
+  .modal-overlay { position: fixed; inset: 0; background: rgba(26,35,50,0.55); display: flex; align-items: center; justify-content: center; z-index: 200; opacity: 0; pointer-events: none; transition: opacity 0.25s; }
+  .modal-overlay.open { opacity: 1; pointer-events: all; }
+  .modal-box { background: #fff; border-radius: 16px; width: 500px; max-width: 95vw; max-height: 90vh; overflow-y: auto; box-shadow: 0 20px 60px rgba(0,0,0,0.2); transform: translateY(12px); transition: transform 0.25s; }
+  .modal-overlay.open .modal-box { transform: translateY(0); }
+  .modal-header { padding: 18px 24px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
+  .modal-title { font-size: 16px; font-weight: 700; }
+  .modal-close { width: 32px; height: 32px; border: none; background: var(--bg); border-radius: 8px; cursor: pointer; font-size: 16px; color: var(--text-sub); }
+  .modal-close:hover { background: var(--error-light); color: var(--error); }
+  .modal-body { padding: 20px 24px; }
+  .modal-footer { padding: 14px 24px; border-top: 1px solid var(--border); display: flex; justify-content: flex-end; gap: 10px; }
+
+  /* ALERT */
+  .alert { padding: 12px 16px; border-radius: 10px; font-size: 13px; display: flex; align-items: flex-start; gap: 10px; margin-bottom: 16px; }
+  .alert-success { background: var(--success-light); color: var(--success); border: 1px solid #A5D6A7; }
+  .alert-error { background: var(--error-light); color: var(--error); border: 1px solid #FFCDD2; }
+  .alert-warning { background: var(--warning-light); color: var(--warning); border: 1px solid #FFE0B2; }
+
+  /* RECORDS */
+  .phieu-card { border: 1px solid var(--border); border-radius: 12px; overflow: hidden; background: #fff; margin-bottom: 12px; }
+  .phieu-header { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; background: #F0FEFF; border-bottom: 1px solid var(--border); }
+  .phieu-body { padding: 14px 16px; display: none; }
+  .phieu-body.open { display: block; }
+  .phieu-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .phieu-field { padding: 10px 12px; background: var(--bg); border-radius: 8px; }
+  .phieu-label { font-size: 10px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; margin-bottom: 3px; }
+  .phieu-val { font-size: 13px; font-weight: 500; }
+
+  /* SEARCH */
+  .search-bar { position: relative; margin-bottom: 16px; }
+  .search-bar input { width: 100%; padding: 10px 14px 10px 38px; border: 1.5px solid var(--border); border-radius: 10px; font-size: 13px; font-family: inherit; outline: none; transition: all 0.2s; }
+  .search-bar input:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(4,200,204,0.12); }
+  .search-bar::before { content: '🔍'; position: absolute; left: 12px; top: 50%; transform: translateY(-50%); font-size: 14px; opacity: 0.5; }
+
+  .section-label { font-size: 12px; font-weight: 600; color: var(--text-sub); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 12px; }
+
+  @media (max-width: 900px) {
+    .sidebar { display: none; }
+    .specialty-grid { grid-template-columns: repeat(2, 1fr); }
+    .doctor-list { grid-template-columns: 1fr; }
+    .slot-grid { grid-template-columns: repeat(3, 1fr); }
+    .queue-status { grid-template-columns: 1fr; }
+    .form-row { grid-template-columns: 1fr; }
+    .profile-grid { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <a class="logo" href="index.html">
+    <div class="logo-icon">
+      <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>
+    </div>
+    <span class="logo-text">eHealth<span>Care</span></span>
+  </a>
+  <div class="header-right">
+    <div class="user-info">
+      <div class="user-avatar">BN</div>
+      <span class="user-name">Bệnh nhân</span>
+    </div>
+    <button class="btn-logout" onclick="location.href='index.html'">Đăng xuất</button>
+  </div>
+</header>
+
+<div class="main-wrap">
+  <aside class="sidebar">
+    <div class="sidebar-section">Menu</div>
+    <button class="sidebar-link active" onclick="showPage('booking', this)">📅 Đăng ký khám</button>
+    <button class="sidebar-link" onclick="showPage('queue', this)">🎫 Số thứ tự</button>
+    <button class="sidebar-link" onclick="showPage('records', this)">📋 Hồ sơ & Phiếu khám</button>
+    <button class="sidebar-link" onclick="showPage('notifications', this)">🔔 Thông báo</button>
+    <button class="sidebar-link" onclick="showPage('profile', this)">👤 Cập nhật hồ sơ</button>
+
+    <div class="sidebar-section">Khác</div>
+    <button class="sidebar-link" onclick="showPage('cancel', this)">❌ Hủy lịch khám</button>
+  </aside>
+
+  <main class="content">
+
+    <!-- ====== PAGE: ĐĂNG KÝ KHÁM ====== -->
+    <div class="page active" id="page-booking">
+      <div class="page-title">Đăng ký khám bệnh</div>
+      <div class="page-subtitle">Chọn chuyên khoa, bác sĩ và khung giờ phù hợp</div>
+
+      <!-- Step bar -->
+      <div class="step-bar">
+        <div class="step active" id="s1"><div class="step-circle">1</div><span class="step-label">Chọn khoa</span><div class="step-line"></div></div>
+        <div class="step" id="s2"><div class="step-circle">2</div><span class="step-label">Chọn bác sĩ</span><div class="step-line"></div></div>
+        <div class="step" id="s3"><div class="step-circle">3</div><span class="step-label">Chọn giờ</span><div class="step-line"></div></div>
+        <div class="step" id="s4"><div class="step-circle">4</div><span class="step-label">Xác nhận</span></div>
+      </div>
+
+      <!-- Bước 1: Chọn khoa -->
+      <div class="card" id="card-specialty">
+        <div class="card-header"><div class="card-icon">🏥</div><div><div class="card-title">Bước 1: Chọn chuyên khoa</div><div class="card-desc">Chọn một hoặc nhiều khoa cần khám</div></div></div>
+        <div class="card-body">
+          <div class="form-group2 full" style="margin-bottom:16px;">
+            <label>Mô tả triệu chứng (tùy chọn - AI gợi ý khoa)</label>
+            <textarea id="symptomInput" rows="2" placeholder="Ví dụ: Tôi bị đau đầu, sốt, mệt mỏi..."></textarea>
+            <div style="margin-top:8px;"><button class="btn btn-outline btn-sm" onclick="analyzeSymptom()">✨ AI phân tích triệu chứng</button></div>
+          </div>
+          <div class="section-label">Danh sách chuyên khoa</div>
+          <div class="specialty-grid" id="specialtyGrid"></div>
+        </div>
+      </div>
+
+      <!-- Bước 2: Chọn bác sĩ -->
+      <div class="card" id="card-doctor" style="opacity:0.5;pointer-events:none;">
+        <div class="card-header"><div class="card-icon">👨‍⚕️</div><div><div class="card-title">Bước 2: Chọn bác sĩ</div><div class="card-desc" id="doctor-desc">Vui lòng chọn khoa trước</div></div></div>
+        <div class="card-body">
+          <div class="doctor-list" id="doctorList"></div>
+        </div>
+      </div>
+
+      <!-- Bước 3: Chọn ngày & giờ -->
+      <div class="card" id="card-slot" style="opacity:0.5;pointer-events:none;">
+        <div class="card-header"><div class="card-icon">📅</div><div><div class="card-title">Bước 3: Chọn ngày &amp; giờ khám</div><div class="card-desc">Hệ thống tự động chặn giờ trùng giữa các khoa</div></div></div>
+        <div class="card-body">
+          <div class="date-tabs" id="dateTabs"></div>
+          <div class="section-label">Khung giờ khả dụng</div>
+          <div id="slotContainer"></div>
+          <div class="summary-strip" id="bookingSummary">
+            <div class="sum-title">📋 Tổng hợp đăng ký</div>
+            <div id="summaryContent"></div>
+            <div style="margin-top:12px;text-align:right;"><button class="btn btn-primary" onclick="submitBooking()">✅ Hoàn tất đăng ký</button></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ====== PAGE: SỐ THỨ TỰ ====== -->
+    <div class="page" id="page-queue">
+      <div class="page-title">Số thứ tự của bạn</div>
+      <div class="page-subtitle">Theo dõi trạng thái xếp hàng và thờigian chờ ước tính</div>
+
+      <div class="queue-status">
+        <div class="status-card">
+          <div class="status-num" id="q-current">A025</div>
+          <div class="status-label">Số của bạn</div>
+        </div>
+        <div class="status-card">
+          <div class="status-num" id="q-serving">A021</div>
+          <div class="status-label">Đang phục vụ</div>
+        </div>
+        <div class="status-card">
+          <div class="status-num" style="color:var(--warning);" id="q-wait">4</div>
+          <div class="status-label">Số ngườichờ trước bạn</div>
+          <div class="status-wait" id="q-time">Ước tính: ~20 phút</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header"><div class="card-icon">📊</div><div><div class="card-title">Chi tiết phiếu khám</div><div class="card-desc">Thông tin số thứ tự và phòng khám</div></div></div>
+        <div class="card-body">
+          <div class="ticket-card">
+            <div class="ticket-num" id="ticketNum">A025</div>
+            <div class="ticket-label">Số thứ tự</div>
+            <div class="ticket-room" id="ticketRoom">Phòng khám 103 - Khoa Nội tổng quát</div>
+            <div class="ticket-time" id="ticketTime">Giờ dự kiến: 09:30 - Ngày 01/06/2026</div>
+            <div style="margin-top:16px;"><span class="badge badge-waiting" id="ticketStatus">Đang chờ khám</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ====== PAGE: HỒ SƠ & PHIẾU KHÁM ====== -->
+    <div class="page" id="page-records">
+      <div class="page-title">Hồ sơ y tế &amp; Phiếu khám</div>
+      <div class="page-subtitle">Xem lịch sử khám bệnh và phiếu khám của bạn</div>
+
+      <div class="card">
+        <div class="card-header"><div class="card-icon">👤</div><div><div class="card-title">Thông tin cá nhân</div></div></div>
+        <div class="card-body">
+          <div class="profile-grid">
+            <div class="profile-item"><div class="profile-label">Họ và tên</div><div class="profile-value">Nguyễn Văn An</div></div>
+            <div class="profile-item"><div class="profile-label">Mã bệnh nhân</div><div class="profile-value">BN-2024-0041</div></div>
+            <div class="profile-item"><div class="profile-label">Ngày sinh</div><div class="profile-value">15/03/1985</div></div>
+            <div class="profile-item"><div class="profile-label">Giới tính</div><div class="profile-value">Nam</div></div>
+            <div class="profile-item"><div class="profile-label">Nhóm máu</div><div class="profile-value">B+</div></div>
+            <div class="profile-item"><div class="profile-label">Số điện thoại</div><div class="profile-value">0912 345 678</div></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header"><div class="card-icon">🩺</div><div><div class="card-title">Lịch sử phiếu khám</div></div><button class="btn btn-primary btn-sm" onclick="openModal('modal-phieu')">➕ Tạo phiếu</button></div>
+        <div class="card-body" id="phieuList"></div>
+      </div>
+    </div>
+
+    <!-- ====== PAGE: THÔNG BÁO ====== -->
+    <div class="page" id="page-notifications">
+      <div class="page-title">Thông báo</div>
+      <div class="page-subtitle">Các thông báo từ hệ thống và bệnh viện</div>
+      <div class="card"><div class="card-body" id="notifList"></div></div>
+    </div>
+
+    <!-- ====== PAGE: CẬP NHẬT HỒ SƠ ====== -->
+    <div class="page" id="page-profile">
+      <div class="page-title">Cập nhật hồ sơ</div>
+      <div class="page-subtitle">Chỉnh sửa thông tin cá nhân và y tế</div>
+
+      <div class="card">
+        <div class="card-body">
+          <div id="profile-success" class="alert alert-success" style="display:none;">✅ Cập nhật thành công!</div>
+          <div class="form-row">
+            <div class="form-group2"><label>Họ và tên</label><input type="text" id="upd-name" value="Nguyễn Văn An"></div>
+            <div class="form-group2"><label>Ngày sinh</label><input type="date" id="upd-dob" value="1985-03-15"></div>
+            <div class="form-group2"><label>Giới tính</label><select id="upd-gender"><option selected>Nam</option><option>Nữ</option><option>Khác</option></select></div>
+            <div class="form-group2"><label>Số điện thoại</label><input type="tel" id="upd-phone" value="0912 345 678"></div>
+            <div class="form-group2"><label>Email</label><input type="email" id="upd-email" value="nguyenvanan@email.com"></div>
+            <div class="form-group2"><label>Nhóm máu</label><select id="upd-blood"><option>A+</option><option selected>B+</option><option>O+</option><option>AB+</option></select></div>
+            <div class="form-group2 full"><label>Địa chỉ</label><input type="text" id="upd-address" value="123 Đường Lê Lợi, Q.1, TP.HCM"></div>
+            <div class="form-group2 full"><label>Tiền sử bệnh / Dị ứng</label><textarea id="upd-medical">Dị ứng Penicillin. Tiền sử tăng huyết áp từ năm 2018.</textarea></div>
+            <div class="form-group2 full"><label>Triệu chứng hiện tại / Ghi chú</label><textarea id="upd-note" placeholder="Thông tin thêm..."></textarea></div>
+          </div>
+          <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:8px;">
+            <button class="btn btn-ghost" onclick="resetProfile()">↩ Đặt lại</button>
+            <button class="btn btn-primary" onclick="saveProfile()">💾 Lưu cập nhật</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ====== PAGE: HỦY LỊCH ====== -->
+    <div class="page" id="page-cancel">
+      <div class="page-title">Hủy lịch khám</div>
+      <div class="page-subtitle">Chọn lịch khám cần hủy</div>
+      <div class="card">
+        <div class="card-body">
+          <div class="search-bar"><input type="text" id="cancelSearch" placeholder="Tìm theo tên bác sĩ, khoa, ngày khám..." oninput="filterCancel()"></div>
+          <table class="data-table">
+            <thead><tr><th>Ngày khám</th><th>Khoa</th><th>Bác sĩ</th><th>Giờ</th><th>Trạng thái</th><th></th></tr></thead>
+            <tbody id="cancelList"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<!-- ====== MODAL: TẠO PHIẾU KHÁM ====== -->
+<div class="modal-overlay" id="modal-phieu">
+  <div class="modal-box">
+    <div class="modal-header"><div class="modal-title">🩺 Tạo phiếu khám</div><button class="modal-close" onclick="closeModal('modal-phieu')">✕</button></div>
+    <div class="modal-body">
+      <div id="phieu-success" class="alert alert-success" style="display:none;">✅ Tạo phiếu thành công!</div>
+      <div class="form-row">
+        <div class="form-group2"><label>Ngày khám <span class="required">*</span></label><input type="date" id="pk-date"></div>
+        <div class="form-group2"><label>Bác sĩ <span class="required">*</span></label><input type="text" id="pk-doctor" placeholder="Tên bác sĩ"></div>
+        <div class="form-group2"><label>Khoa</label><select id="pk-dept"><option>Nội tổng quát</option><option>Tim mạch</option><option>Thần kinh</option><option>Da liễu</option><option>Tai mũi họng</option><option>Mắt</option></select></div>
+        <div class="form-group2"><label>Nhiệt độ (°C)</label><input type="number" id="pk-temp" placeholder="37.0" step="0.1"></div>
+        <div class="form-group2"><label>Huyết áp</label><input type="text" id="pk-bp" placeholder="120/80"></div>
+        <div class="form-group2"><label>Nhịp tim</label><input type="number" id="pk-heart" placeholder="75"></div>
+        <div class="form-group2 full"><label>Lý do khám <span class="required">*</span></label><textarea id="pk-reason" placeholder="Triệu chứng..."></textarea></div>
+        <div class="form-group2 full"><label>Chẩn đoán</label><textarea id="pk-diag" placeholder="Chẩn đoán..."></textarea></div>
+        <div class="form-group2 full"><label>Đơn thuốc</label><textarea id="pk-rx" placeholder="Thuốc kê đơn..."></textarea></div>
+        <div class="form-group2 full"><label>Ghi chú</label><textarea id="pk-note" placeholder="Ghi chú thêm..."></textarea></div>
+      </div>
+    </div>
+    <div class="modal-footer"><button class="btn btn-ghost" onclick="closeModal('modal-phieu')">Hủy</button><button class="btn btn-primary" onclick="submitPhieu()">💾 Lưu phiếu</button></div>
+  </div>
+</div>
+
+<!-- ====== MODAL: XÁC NHẬN HỦY ====== -->
+<div class="modal-overlay" id="modal-cancel">
+  <div class="modal-box" style="width:400px;">
+    <div class="modal-header"><div class="modal-title">❌ Xác nhận hủy lịch</div><button class="modal-close" onclick="closeModal('modal-cancel')">✕</button></div>
+    <div class="modal-body"><p style="font-size:14px;color:var(--text-sub);">Bạn có chắc muốn hủy lịch khám này? Hành động không thể hoàn tác.</p></div>
+    <div class="modal-footer"><button class="btn btn-ghost" onclick="closeModal('modal-cancel')">Không</button><button class="btn btn-danger" onclick="confirmCancel()">Có, hủy lịch</button></div>
+  </div>
+</div>
+
+<div class="toast-container" id="toastContainer"></div>
+
+<script>
+// ==================== DATA ====================
+const specialties = [
+  { name: 'Nội tổng quát', icon: '🩺', doctors: ['BS. Nguyễn Hữu Long', 'BS. Đặng Sỹ Huy'] },
+  { name: 'Tim mạch', icon: '❤️', doctors: ['BS. Lê Anh Tuấn', 'BS. Phạm Minh Đức'] },
+  { name: 'Da liễu', icon: '🧬', doctors: ['BS. Đào Như Quỳnh', 'BS. Hoàng Minh Đức'] },
+  { name: 'Tai mũi họng', icon: '👂', doctors: ['BS. Nguyễn Văn Bình', 'BS. Trần Thị Lan'] },
+  { name: 'Tiêu hóa', icon: '🍽️', doctors: ['BS. Nguyễn Huyền Trang', 'BS. Vũ Thị Mai'] },
+  { name: 'Cơ xương khớp', icon: '🦴', doctors: ['BS. Đinh Thế Bảo', 'BS. Lý Thanh Nhàn'] },
+  { name: 'Mắt', icon: '👁️', doctors: ['BS. Lý Thanh Nhàn', 'BS. Phạm Quang Hải'] },
+  { name: 'Thần kinh', icon: '🧠', doctors: ['BS. Trần Minh Châu', 'BS. Hoàng Anh Tuấn'] }
+];
+const aiKeywords = {
+  'Nội tổng quát': ['đau đầu','sốt','mệt mỏi','ho','cảm'],
+  'Tim mạch': ['đau ngực','khó thở','tim','huyết áp'],
+  'Da liễu': ['nổi mẩn','ngứa','dị ứng da','rụng tóc'],
+  'Tai mũi họng': ['đau họng','nghẹt mũi','ho','viêm họng'],
+  'Tiêu hóa': ['đau bụng','tiêu chảy','buồn nôn','đầy bụng'],
+  'Cơ xương khớp': ['đau lưng','đau khớp','đau xương','thoái hóa'],
+  'Mắt': ['mờ mắt','đau mắt','đỏ mắt','nhức mắt'],
+  'Thần kinh': ['chóng mặt','đau đầu','co giật','mất ngủ']
+};
+const workingHours = ['08:00','08:30','09:00','09:30','10:00','10:30','11:00','11:30','13:00','13:30','14:00','14:30','15:00','15:30','16:00','16:30'];
+
+let state = { spec: null, doctor: null, date: null, slot: null, bookings: [] };
+let cancelBookingId = null;
+
+// ==================== INIT ====================
+document.addEventListener('DOMContentLoaded', () => {
+  renderSpecialties();
+  renderDates();
+  renderPhieuList();
+  renderNotifications();
+  renderCancelList();
+  document.getElementById('pk-date').value = new Date().toISOString().split('T')[0];
+});
+
+// ==================== NAVIGATION ====================
+function showPage(pageId, btn) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.getElementById('page-' + pageId).classList.add('active');
+  if (btn) {
+    document.querySelectorAll('.sidebar-link').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+  }
+}
+
+// ==================== BOOKING ====================
+function renderSpecialties() {
+  const g = document.getElementById('specialtyGrid');
+  g.innerHTML = specialties.map((s,i) => `
+    <div class="spec-chip" id="spec-${i}" onclick="selectSpec(${i})">
+      <span class="spec-emoji">${s.icon}</span>
+      <span class="spec-name">${s.name}</span>
+      <div class="spec-check" id="check-${i}"></div>
+    </div>`).join('');
+}
+
+function analyzeSymptom() {
+  const txt = document.getElementById('symptomInput').value.toLowerCase().trim();
+  if (!txt) { showToast('Vui lòng nhập triệu chứng!','warning'); return; }
+  let matched = [];
+  Object.entries(aiKeywords).forEach(([spec, kws]) => { if (kws.some(k => txt.includes(k))) matched.push(spec); });
+  if (!matched.length) { showToast('Không nhận diện được. Vui lòng chọn khoa thủ công.','warning'); return; }
+  matched.forEach(name => { const i = specialties.findIndex(s => s.name === name); if (i>=0) selectSpec(i); });
+  showToast('AI gợi ý: ' + matched.join(', '),'success');
+}
+
+function selectSpec(idx) {
+  state.spec = specialties[idx];
+  document.querySelectorAll('.spec-chip').forEach((c,i) => { c.classList.toggle('selected', i===idx); });
+  updateSteps(2);
+  renderDoctors(state.spec);
+  document.getElementById('card-doctor').style.opacity = '1';
+  document.getElementById('card-doctor').style.pointerEvents = 'auto';
+  document.getElementById('doctor-desc').textContent = 'Khoa: ' + state.spec.name;
+}
+
+function renderDoctors(spec) {
+  const g = document.getElementById('doctorList');
+  g.innerHTML = spec.doctors.map((d,i) => `
+    <div class="doctor-card" id="doc-${i}" onclick="selectDoctor(${i})">
+      <div class="doctor-avatar">👨‍⚕️</div>
+      <div><div class="doctor-name">${d}</div><div class="doctor-title">${spec.name}</div></div>
+      <div class="doctor-slots" id="docsl-${i}">Chọn</div>
+    </div>`).join('');
+}
+
+function selectDoctor(idx) {
+  state.doctor = state.spec.doctors[idx];
+  document.querySelectorAll('.doctor-card').forEach((c,i) => {
+    c.classList.toggle('selected', i===idx);
+    document.getElementById('docsl-' + i).textContent = i===idx ? 'Đã chọn ✓' : 'Chọn';
+  });
+  updateSteps(3);
+  document.getElementById('card-slot').style.opacity = '1';
+  document.getElementById('card-slot').style.pointerEvents = 'auto';
+  if (state.date) renderSlots(state.date);
+}
+
+function renderDates() {
+  const c = document.getElementById('dateTabs');
+  const today = new Date();
+  let html = '';
+  for (let i=0; i<7; i++) {
+    const d = new Date(today); d.setDate(today.getDate()+i);
+    const iso = d.toISOString().split('T')[0];
+    const label = i===0 ? 'Hôm nay' : i===1 ? 'Ngày mai' : 'T'+(d.getDay()+1);
+    const dm = d.getDate().toString().padStart(2,'0')+'/'+(d.getMonth()+1).toString().padStart(2,'0');
+    html += `<button class="date-tab ${i===0?'active':''}" id="dt-${iso}" onclick="selectDate('${iso}',this)">${label}<span class="date-day">${dm}</span></button>`;
+  }
+  c.innerHTML = html;
+  state.date = today.toISOString().split('T')[0];
+}
+
+function selectDate(iso, btn) {
+  state.date = iso;
+  document.querySelectorAll('.date-tab').forEach(b => b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  if (state.doctor) renderSlots(iso);
+}
+
+function renderSlots(date) {
+  const c = document.getElementById('slotContainer');
+  const taken = state.bookings.filter(b => b.date===date).map(b => b.slot);
+  const morning = workingHours.slice(0,8).map(t => makeSlotBtn(t, taken.includes(t))).join('');
+  const afternoon = workingHours.slice(8).map(t => makeSlotBtn(t, taken.includes(t))).join('');
+  c.innerHTML = `<div class="section-label">Buổi sáng</div><div class="slot-grid">${morning}</div>
+    <div class="section-label" style="margin-top:14px;">Buổi chiều</div><div class="slot-grid">${afternoon}</div>`;
+}
+
+function makeSlotBtn(time, taken) {
+  const sel = state.slot===time && state.date===state.date;
+  const cls = taken ? 'conflict' : sel ? 'selected' : '';
+  const dis = taken ? 'disabled' : '';
+  const lbl = taken ? 'Trùng lịch' : sel ? 'Đã chọn ✓' : 'Còn chỗ';
+  return `<button class="slot-btn ${cls}" ${dis} onclick="selectSlot('${time}')">${time}<small>${lbl}</small></button>`;
+}
+
+function selectSlot(time) {
+  state.slot = time;
+  renderSlots(state.date);
+  updateSteps(4);
+  updateSummary();
+}
+
+function updateSummary() {
+  const el = document.getElementById('bookingSummary');
+  const c = document.getElementById('summaryContent');
+  c.innerHTML = `<div class="sum-row">
+    <div><span class="sum-label">Khoa:</span> <span class="sum-val">${state.spec?state.spec.name:''}</span></div>
+    <div><span class="sum-label">Bác sĩ:</span> <span class="sum-val" style="color:var(--primary);">${state.doctor||''}</span></div>
+    <div><span class="sum-label">Ngày:</span> <span class="sum-val">${state.date||''}</span></div>
+    <div><span class="sum-label">Giờ:</span> <span class="sum-val">${state.slot||''}</span></div>
+  </div>`;
+  el.classList.add('show');
+}
+
+function updateSummary2() {
+  // Alias for render compatibility
+}
+
+function updateSteps(n) {
+  for (let i=1;i<=4;i++) {
+    const el = document.getElementById('s'+i);
+    el.classList.remove('active','done');
+    if (i<n) el.classList.add('done');
+    else if (i===n) el.classList.add('active');
+  }
+}
+
+function submitBooking() {
+  if (!state.spec || !state.doctor || !state.date || !state.slot) { showToast('Vui lòng chọn đầy đủ thông tin!','error'); return; }
+  const booking = { id: Date.now(), spec: state.spec.name, doctor: state.doctor, date: state.date, slot: state.slot, status: 'waiting' };
+  state.bookings.push(booking);
+  let all = JSON.parse(localStorage.getItem('bookings')||'[]');
+  all.push(booking); localStorage.setItem('bookings', JSON.stringify(all));
+  showToast('Đăng ký thành công! Mã BK-'+booking.id.toString().slice(-4),'success');
+  renderCancelList();
+  // Reset
+  state = { spec:null, doctor:null, date:state.date, slot:null, bookings: state.bookings };
+  document.querySelectorAll('.spec-chip').forEach(c => c.classList.remove('selected'));
+  document.getElementById('card-doctor').style.opacity = '0.5'; document.getElementById('card-doctor').style.pointerEvents = 'none';
+  document.getElementById('card-slot').style.opacity = '0.5'; document.getElementById('card-slot').style.pointerEvents = 'none';
+  document.getElementById('bookingSummary').classList.remove('show');
+  document.getElementById('doctorList').innerHTML = '';
+  document.getElementById('slotContainer').innerHTML = '';
+  updateSteps(1);
+}
+
+// ==================== CANCEL ====================
+function renderCancelList() {
+  const all = JSON.parse(localStorage.getItem('bookings')||'[]');
+  const tbody = document.getElementById('cancelList');
+  if (!all.length) { tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--text-muted);padding:24px;">Không có lịch khám nào</td></tr>'; return; }
+  tbody.innerHTML = all.map(b => `
+    <tr><td>${b.date}</td><td>${b.spec}</td><td>${b.doctor}</td><td>${b.slot}</td>
+    <td><span class="badge badge-${b.status==='waiting'?'waiting':b.status==='done'?'done':'cancel'}">${b.status==='waiting'?'Chờ khám':b.status==='done'?'Hoàn tất':'Đã hủy'}</span></td>
+    <td><button class="btn btn-danger btn-sm" ${b.status!=='waiting'?'disabled':''} onclick="askCancel(${b.id})">Hủy</button></td></tr>`).join('');
+}
+
+function filterCancel() {
+  const q = document.getElementById('cancelSearch').value.toLowerCase();
+  const rows = document.querySelectorAll('#cancelList tr');
+  rows.forEach(r => { r.style.display = r.textContent.toLowerCase().includes(q)?'':'none'; });
+}
+
+function askCancel(id) { cancelBookingId = id; openModal('modal-cancel'); }
+function confirmCancel() {
+  let all = JSON.parse(localStorage.getItem('bookings')||'[]');
+  const idx = all.findIndex(b => b.id === cancelBookingId);
+  if (idx >= 0) { all[idx].status = 'cancelled'; localStorage.setItem('bookings', JSON.stringify(all)); }
+  closeModal('modal-cancel'); showToast('Đã hủy lịch khám!','success'); renderCancelList();
+}
+
+// ==================== PHIẾU KHÁM ====================
+const phieuData = [
+  { id:1, date:'10/05/2026', doctor:'BS. Nguyễn Thị Lan', dept:'Nội tổng quát', reason:'Đau đầu, chóng mặt', diag:'Tăng huyết áp độ 1', rx:'Amlodipine 5mg x 1v/ngày', note:'Tái khám sau 2 tuần' },
+  { id:2, date:'25/03/2026', doctor:'BS. Phạm Minh Đức', dept:'Tim mạch', reason:'Kiểm tra định kỳ', diag:'Tăng huyết áp trung bình', rx:'Tăng liều Amlodipine 10mg', note:'Chế độ ăn ít muối' }
+];
+
+function renderPhieuList() {
+  const c = document.getElementById('phieuList');
+  c.innerHTML = phieuData.map(p => `
+    <div class="phieu-card">
+      <div class="phieu-header">
+        <div><div style="font-weight:600;font-size:14px;">Phiếu khám - ${p.date}</div><div style="font-size:12px;color:var(--text-sub);">${p.doctor} · ${p.dept}</div></div>
+        <div style="display:flex;gap:8px;align-items:center;"><span class="badge badge-done">Hoàn tất</span><button class="btn btn-ghost btn-sm" onclick="document.getElementById('phieu-body-${p.id}').classList.toggle('open')">▾ Xem</button></div>
+      </div>
+      <div class="phieu-body" id="phieu-body-${p.id}">
+        <div class="phieu-grid">
+          <div class="phieu-field"><div class="phieu-label">Lý do khám</div><div class="phieu-val">${p.reason}</div></div>
+          <div class="phieu-field"><div class="phieu-label">Chẩn đoán</div><div class="phieu-val">${p.diag}</div></div>
+          <div class="phieu-field full"><div class="phieu-label">Đơn thuốc</div><div class="phieu-val">${p.rx}</div></div>
+          <div class="phieu-field full"><div class="phieu-label">Ghi chú</div><div class="phieu-val">${p.note}</div></div>
+        </div>
+      </div>
+    </div>`).join('');
+}
+
+function submitPhieu() {
+  const date = document.getElementById('pk-date').value;
+  const doctor = document.getElementById('pk-doctor').value;
+  const dept = document.getElementById('pk-dept').value;
+  const reason = document.getElementById('pk-reason').value;
+  if (!date || !doctor || !reason) { showToast('Vui lòng nhập đầy đủ thông tin bắt buộc!','error'); return; }
+  const newPhieu = { id: Date.now(), date: date.split('-').reverse().join('/'), doctor, dept, reason,
+    diag: document.getElementById('pk-diag').value, rx: document.getElementById('pk-rx').value,
+    note: document.getElementById('pk-note').value };
+  phieuData.unshift(newPhieu);
+  document.getElementById('phieu-success').style.display = 'flex';
+  renderPhieuList();
+  setTimeout(() => closeModal('modal-phieu'), 1500);
+}
+
+// ==================== NOTIFICATIONS ====================
+const notifs = [
+  { type:'success', icon:'✅', title:'Đăng ký thành công', text:'Lịch khám Nội tổng quát ngày 05/06 đã được xác nhận', time:'5 phút trước' },
+  { type:'info', icon:'📢', title:'Thông báo bệnh viện', text:'Bệnh viện thay đổi giờ làm việc buổi chiều từ 13h00', time:'1 giờ trước' },
+  { type:'warning', icon:'⏰', title:'Nhắc lịch tái khám', text:'Bạn có lịch tái khám vào ngày 15/06/2026', time:'3 giờ trước' },
+  { type:'success', icon:'🎫', title:'Cấp số thứ tự', text:'Số thứ tự A025 đã được cấp. Phòng khám 103', time:'Hôm qua' }
+];
+
+function renderNotifications() {
+  const c = document.getElementById('notifList');
+  c.innerHTML = notifs.map(n => `
+    <div class="notif-item">
+      <div class="notif-icon ${n.type}">${n.icon}</div>
+      <div><div class="notif-title">${n.title}</div><div class="notif-text">${n.text}</div><div class="notif-time">${n.time}</div></div>
+    </div>`).join('');
+}
+
+// ==================== PROFILE ====================
+const profileBackup = {};
+function saveProfile() {
+  document.getElementById('profile-success').style.display = 'flex';
+  showToast('Cập nhật hồ sơ thành công!','success');
+  setTimeout(() => document.getElementById('profile-success').style.display = 'none', 3000);
+}
+function resetProfile() {
+  document.getElementById('upd-name').value = 'Nguyễn Văn An';
+  document.getElementById('upd-dob').value = '1985-03-15';
+  document.getElementById('upd-phone').value = '0912 345 678';
+  document.getElementById('upd-email').value = 'nguyenvanan@email.com';
+  document.getElementById('upd-address').value = '123 Đường Lê Lợi, Q.1, TP.HCM';
+  document.getElementById('upd-medical').value = 'Dị ứng Penicillin. Tiền sử tăng huyết áp từ năm 2018.';
+  document.getElementById('upd-note').value = '';
+  showToast('Đã đặt lại form','warning');
+}
+
+// ==================== MODAL ====================
+function openModal(id) { document.getElementById(id).classList.add('open'); }
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+document.querySelectorAll('.modal-overlay').forEach(o => o.addEventListener('click', e => { if(e.target===o) o.classList.remove('open'); }));
+
+// ==================== TOAST ====================
+function showToast(msg, type) {
+  const c = document.getElementById('toastContainer');
+  const t = document.createElement('div'); t.className = 'toast ' + (type||''); t.innerHTML = '<div>'+msg+'</div>';
+  c.appendChild(t); setTimeout(()=>t.classList.add('show'),10);
+  setTimeout(()=>{t.classList.remove('show');setTimeout(()=>t.remove(),300);},3500);
+}
+</script>
+</body>
+</html>
