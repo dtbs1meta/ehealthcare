@@ -254,6 +254,18 @@
     const pass = document.getElementById('password').value.trim();
     if (!user || !pass) { showToast('Vui lòng nhập đầy đủ thông tin!', 'error'); return; }
 
+    // Lưu session
+    const sessionData = {
+      role: selectedRole,
+      username: user,
+      maBN: selectedRole === 'patient' ? '1' : null,
+      maNV: selectedRole === 'receptionist' ? '101' : null,
+      maBS: selectedRole === 'doctor' ? '1' : null,
+      hoTen: 'Demo User',
+      maPhongKham: selectedRole === 'doctor' ? '1' : null
+    };
+    sessionStorage.setItem('user', JSON.stringify(sessionData));
+
     // Chuyển hướng theo vai trò
     switch(selectedRole) {
       case 'patient': window.location.href = 'patient.html'; break;

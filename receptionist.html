@@ -1,10 +1,11 @@
 <!DOCTYPE html>
 <html lang="vi">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>eHealthCare - Lễ tân</title>
-<style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>eHealthCare - Lễ tân</title>
+    <script src="api-mock.js"></script>
+    <style>
   @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;600;700&display=swap');
   :root {
     --primary: #04C8CC; --primary-dark: #039EA1; --primary-light: #E0F9F9;
@@ -372,36 +373,37 @@
 <div class="toast-container" id="toastContainer"></div>
 
 <script>
-// ==================== DATA ====================
-const rooms = [
-  { id:'P101', dept:'Nội tổng quát', doctor:'BS. Nguyễn Hữu Long', status:'free' },
-  { id:'P102', dept:'Tim mạch', doctor:'BS. Lê Anh Tuấn', status:'busy' },
-  { id:'P103', dept:'Nội tổng quát', doctor:'BS. Đặng Sỹ Huy', status:'free' },
-  { id:'P201', dept:'Da liễu', doctor:'BS. Đào Như Quỳnh', status:'free' },
-  { id:'P202', dept:'Tai mũi họng', doctor:'BS. Nguyễn Văn Bình', status:'free' },
-  { id:'P203', dept:'Tiêu hóa', doctor:'BS. Nguyễn Huyền Trang', status:'busy' }
-];
+// ==================== SESSION & AUTH ====================
+const user = JSON.parse(sessionStorage.getItem('user'));
+if (!user || user.role !== 'receptionist') {
+  window.location.href = 'index.html';
+}
 
-// Priority Queue với chống starvation
-let queue = [
-  { id:1, stt:'A001', name:'Nguyễn Văn An', yob:1985, gender:'Nam', phone:'0912345678', priority:3, room:'P101', dept:'Nội tổng quát', waitCount:0, status:'waiting', symptom:'Đau đầu, sốt' },
-  { id:2, stt:'A002', name:'Trần Thị Lan', yob:2018, gender:'Nữ', phone:'0987654321', priority:2, room:'P102', dept:'Tim mạch', waitCount:0, status:'waiting', symptom:'Khó thở' },
-  { id:3, stt:'A003', name:'Phạm Quang Hải', yob:1970, gender:'Nam', phone:'0977123456', priority:2, room:'P101', dept:'Nội tổng quát', waitCount:0, status:'waiting', symptom:'Tăng huyết áp' },
-  { id:4, stt:'A004', name:'Lê Thị Hoa', yob:1995, gender:'Nữ', phone:'0933111222', priority:3, room:'P201', dept:'Da liễu', waitCount:0, status:'waiting', symptom:'Nổi mẩn ngứa' },
-  { id:5, stt:'A005', name:'Hoàng Minh', yob:1950, gender:'Nam', phone:'0966888999', priority:2, room:'P103', dept:'Nội tổng quát', waitCount:0, status:'waiting', symptom:'Đau ngực' },
-  { id:6, stt:'A006', name:'Đỗ Thị Mai', yob:2005, gender:'Nữ', phone:'0909000111', priority:3, room:'P202', dept:'Tai mũi họng', waitCount:0, status:'waiting', symptom:'Viêm họng' }
-];
-let nextNum = 7;
-let servingCounter = { p2: 0, p3: 0 };
+const CURRENT_NV_ID = user.maNV;
+
+// ==================== DATA ====================
+let selectedRoom = null;
 
 // ==================== INIT ====================
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('dashTime').textContent = new Date().toLocaleString('vi-VN');
-  renderRooms(); renderQueue(); renderPriority(); renderTransfer(); renderDSBN(); updateStats(); populateSelects();
+  await renderRooms();
+  renderQueue();
+  renderPriority();
+  renderTransfer();
+  renderDSBN();
+  updateStats();
+  populateSelects();
 });
 
-function populateSelects() {
-  const rsel = (id, addAll) => { const s = document.getElementById(id); if(!s)return; s.innerHTML = (addAll?'<option value="">Tất cả</option>':'') + rooms.map(r => `<option value="${r.id}">${r.id} - ${r.dept} (${r.doctor})</option>`).join(''); };
+async function populateSelects() {
+  const rooms = await API.get('/api/phong-kham');
+  const rsel = (id, addAll) => {
+    const s = document.getElementById(id);
+    if(!s) return;
+    s.innerHTML = (addAll?'<option value="">Tất cả</option>' : '') +
+      rooms.map(r => `<option value="${r.MaPhongKham}">${r.MaPhongKham} - ${r.TenPhongKham} (${DB.get('BacSi').find(bs => bs.MaPhongKham == r.MaPhongKham)?.HoTen || '---'})</option>`).join('');
+  };
   rsel('chuyen-room'); rsel('ins-room');
 }
 
@@ -418,110 +420,140 @@ function showPage(pageId, btn) {
 
 // ==================== STATS ====================
 function updateStats() {
-  const waiting = queue.filter(q => q.status === 'waiting');
-  document.getElementById('stat-total').textContent = queue.length;
-  document.getElementById('stat-p1').textContent = waiting.filter(q => q.priority === 1).length;
-  document.getElementById('stat-p2').textContent = waiting.filter(q => q.priority === 2).length;
+  const stts = DB.get('SoThuTu');
+  const waiting = stts.filter(s => s.TrangThaiThe === 'WAITING');
+
+  const p1 = waiting.filter(s => {
+    const bn = DB.get('BenhNhan').find(b => b.MaBN == s.MaBN);
+    return bn?.LoaiUuTien === 'Cấp cứu';
+  }).length;
+
+  const p2 = waiting.filter(s => {
+    const bn = DB.get('BenhNhan').find(b => b.MaBN == s.MaBN);
+    return bn?.LoaiUuTien === 'Ngườigià / Trẻ em';
+  }).length;
+
+  document.getElementById('stat-total').textContent = stts.length;
+  document.getElementById('stat-p1').textContent = p1;
+  document.getElementById('stat-p2').textContent = p2;
   document.getElementById('stat-wait').textContent = waiting.length;
   document.getElementById('queueCount').textContent = waiting.length;
 
-  // Dashboard preview
   const dash = document.getElementById('dashQueue');
   if (!waiting.length) { dash.innerHTML = '<div class="empty-state">Không có bệnh nhân đang chờ</div>'; return; }
-  dash.innerHTML = waiting.slice(0, 5).map(q => `
-    <div class="queue-item">
-      <div class="queue-priority p${q.priority}">${q.priority}</div>
-      <div class="queue-info"><div class="queue-name">${q.name}</div><div class="queue-meta">${q.dept} · ${q.room} · ${q.symptom}</div></div>
-      <div class="queue-stt">${q.stt}</div>
-      <span class="badge badge-${q.priority===1?'p1':q.priority===2?'p2':'p3'}">${q.priority===1?'Cấp cứu':q.priority===2?'Ưu tiên':'Thường'}</span>
-    </div>`).join('');
+
+  const sorted = [...waiting].sort((a, b) => a.SoThuTu - b.SoThuTu);
+  dash.innerHTML = sorted.slice(0, 5).map(q => {
+    const bn = DB.get('BenhNhan').find(b => b.MaBN == q.MaBN);
+    const room = DB.get('PhongKham').find(p => p.MaPhongKham == q.MaHangDoi);
+    const priority = bn?.LoaiUuTien === 'Cấp cứu' ? 1 : bn?.LoaiUuTien === 'Ngườigià / Trẻ em' ? 2 : 3;
+    return `
+      <div class="queue-item">
+        <div class="queue-priority p${priority}">${priority}</div>
+        <div class="queue-info"><div class="queue-name">${bn?.HoTen || 'Unknown'}</div><div class="queue-meta">${q.SoThuTu} · ${room?.TenPhongKham || '...'}</div></div>
+        <div class="queue-stt">${q.SoThuTu}</div>
+        <span class="badge badge-waiting">Đang chờ</span>
+      </div>`.join('');
+  }).join('');
 }
 
 // ==================== ROOMS ====================
 let selectedRoom = null;
-function renderRooms() {
+async function renderRooms() {
+  const rooms = await API.get('/api/phong-kham');
   const g = document.getElementById('roomGrid');
   g.innerHTML = rooms.map(r => `
-    <div class="room-card ${selectedRoom===r.id?'selected':''}" onclick="selectRoom('${r.id}')">
-      <div class="room-num">${r.id}</div>
-      <div class="room-dept">${r.dept}</div>
-      <div style="font-size:12px;color:var(--text-sub);margin-top:4px;">${r.doctor}</div>
-      <div class="room-status ${r.status}">${r.status==='free'?'🟢 Trống':'🔴 Bận'}</div>
+    <div class="room-card ${selectedRoom===r.MaPhongKham?'selected':''}" onclick="selectRoom('${r.MaPhongKham}')">
+      <div class="room-num">${r.SoPhong}</div>
+      <div class="room-dept">${DB.get('ChuyenKhoa').find(ck => ck.MaCK == r.MaCK)?.TenCK}</div>
+      <div style="font-size:12px;color:var(--text-sub);margin-top:4px;">${DB.get('BacSi').find(bs => bs.MaPhongKham == r.MaPhongKham)?.HoTen || '---'}</div>
+      <div class="room-status ${r.TrangThaiHoatDong ? 'free' : 'busy'}">${r.TrangThaiHoatDong ? '🟢 Trống' : '🔴 Bận'}</div>
     </div>`).join('');
 }
 function selectRoom(id) { selectedRoom = id; renderRooms(); }
 
 // ==================== CAP SO THU TU ====================
-function capSoThuTu() {
+async function capSoThuTu() {
   const name = document.getElementById('cs-name').value.trim();
   const dob = document.getElementById('cs-dob').value;
   const phone = document.getElementById('cs-phone').value.trim();
   if (!name || !dob || !phone) { showToast('Vui lòng nhập đầy đủ thông tin bắt buộc!','error'); return; }
   if (!selectedRoom) { showToast('Vui lòng chọn phòng khám!','error'); return; }
 
-  const yob = parseInt(dob.split('-')[0]);
-  const age = new Date().getFullYear() - yob;
-  let priority = parseInt(document.getElementById('cs-priority').value);
-  // Auto-detect P2 for elderly/children
-  if (priority === 3 && (age > 60 || age < 12)) priority = 2;
+  const priority = document.getElementById('cs-priority').value;
+  const symptom = document.getElementById('cs-symptom').value;
 
-  const room = rooms.find(r => r.id === selectedRoom);
-  const stt = 'A' + String(nextNum).padStart(3, '0');
-  const patient = {
-    id: nextNum++, stt, name, yob, gender: document.getElementById('cs-gender').value,
-    phone, priority, room: room.id, dept: room.dept, waitCount: 0, status: 'waiting',
-    symptom: document.getElementById('cs-symptom').value || ''
-  };
-  queue.push(patient);
-  sortQueue();
+  let bn = DB.get('BenhNhan').find(b => b.SDT === phone);
+  if (!bn) {
+    bn = await API.post('/api/benh-nhan', {
+      HoTen: name, NgaySinh: dob, GioiTinh: document.getElementById('cs-gender').value,
+      SDT: phone, LoaiUuTien: priority === '1' ? 'Cấp cứu' : priority === '2' ? 'Ngườigià / Trẻ em' : 'Bình thường'
+    });
+  }
+
+  const room = DB.get('PhongKham').find(p => p.MaPhongKham == selectedRoom);
+  const hd = DB.get('HangDoi').find(h => h.MaHangDoi == room.MaHangDoi);
+  const sttVal = hd.SoThuTuTiepTheo;
+  const sttPrefix = { 'Nội tổng quát': 'N', 'Tim mạch': 'TM', 'Thần kinh': 'TK', 'Da liễu': 'DL', 'Tai mũi họng': 'TMH' }[DB.get('ChuyenKhoa').find(ck => ck.MaCK == room.MaCK)?.TenCK] || 'A';
+  const sttString = `${sttPrefix}-${String(sttVal).padStart(3, '0')}`;
+
+  const ticket = await API.post('/api/so-thu-tu', {
+    MaBN: bn.MaBN,
+    MaHangDoi: hd.MaHangDoi,
+    SoThuTu: sttVal,
+    TrangThaiThe: 'WAITING',
+    ThoiGianCap: new Date().toISOString(),
+    WaitCount: 0
+  });
+
+  DB.update('HangDoi', 'MaHangDoi', hd.MaHangDoi, {
+    SoThuTuTiepTheo: sttVal + 1,
+    SoLuongDangCho: hd.SoLuongDangCho + 1
+  });
 
   document.getElementById('ticketPreview').style.display = 'block';
-  document.getElementById('ticketNum').textContent = stt;
-  document.getElementById('ticketInfo').innerHTML = `${name}<br>${room.dept} - ${room.id}<br>Ưu tiên: ${priority===1?'Cấp cứu':priority===2?'Ngườigià/Trẻ em':'Bình thường'}`;
+  document.getElementById('ticketNum').textContent = sttString;
+  document.getElementById('ticketInfo').innerHTML = `${bn.HoTen}<br>${room.TenPhongKham} - ${room.SoPhong}<br>Ưu tiên: ${bn.LoaiUuTien}`;
 
-  showToast(`Cấp STT ${stt} thành công!`,`success`);
+  showToast(`Cấp STT ${sttString} thành công!`,`success`);
   updateStats(); renderQueue(); renderPriority(); renderDSBN();
 
-  // Reset form
   document.getElementById('cs-name').value = ''; document.getElementById('cs-dob').value = '';
   document.getElementById('cs-phone').value = ''; document.getElementById('cs-symptom').value = '';
 }
 
 // ==================== PRIORITY QUEUE ALGORITHM ====================
-function sortQueue() {
-  // P1 (cap cuu) always first
-  // Then P2 and P3 interleaved: 2 P2 -> 1 P3
-  // Anti-starvation: P3 waitCount >= 5 -> promote to before P2
-  const waiting = queue.filter(q => q.status === 'waiting');
-  const others = queue.filter(q => q.status !== 'waiting');
+function computeQueueOrder(waiting) {
+  const bns = DB.get('BenhNhan');
 
-  // Separate by priority
-  let p1 = waiting.filter(q => q.priority === 1);
-  let p2 = waiting.filter(q => q.priority === 2);
-  let p3 = waiting.filter(q => q.priority === 3);
+  const getP = (s) => {
+    const bn = bns.find(b => b.MaBN == s.MaBN);
+    if (bn?.LoaiUuTien === 'Cấp cứu') return 1;
+    if (bn?.LoaiUuTien === 'Ngườigià / Trẻ em') return 2;
+    return 3;
+  };
 
-  // Anti-starvation: promote P3 with waitCount >= 5
-  const starving = p3.filter(q => q.waitCount >= 5);
-  p3 = p3.filter(q => q.waitCount < 5);
+  const p1 = waiting.filter(s => getP(s) === 1).sort((a,b) => a.SoThuTu - b.SoThuTu);
+  const p2 = waiting.filter(s => getP(s) === 2).sort((a,b) => a.SoThuTu - b.SoThuTu);
+  const p3 = waiting.filter(s => getP(s) === 3).sort((a,b) => a.SoThuTu - b.SoThuTu);
 
-  // Interleave: 2 P2 then 1 P3
+  const starvingP3 = p3.filter(s => (s.WaitCount || 0) >= 5);
+  const normalP3 = p3.filter(s => (s.WaitCount || 0) < 5);
+
   let interleaved = [];
   let p2i = 0, p3i = 0;
-  while (p2i < p2.length || p3i < p3.length) {
+  while (p2i < p2.length || p3i < normalP3.length) {
     if (p2i < p2.length) interleaved.push(p2[p2i++]);
     if (p2i < p2.length) interleaved.push(p2[p2i++]);
-    if (p3i < p3.length) interleaved.push(p3[p3i++]);
+    if (p3i < normalP3.length) interleaved.push(normalP3[p3i++]);
   }
 
-  // Rebuild queue: P1 -> starving P3 -> interleaved -> others
-  queue = [...p1, ...starving, ...interleaved, ...others];
+  return [...p1, ...starvingP3, ...interleaved];
 }
 
-function getWaitTime(idx, q) {
-  // Estimate wait time based on position and priority
+function getWaitTime(idx, totalWaiting) {
   const minsPerPatient = 15;
-  const ahead = q.filter((x,i) => i < idx && x.status === 'waiting');
-  const totalMins = ahead.length * minsPerPatient;
+  const totalMins = idx * minsPerPatient;
   if (totalMins < 60) return `~${totalMins} phút`;
   return `~${Math.ceil(totalMins/60)} giờ ${totalMins%60} phút`;
 }
