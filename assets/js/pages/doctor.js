@@ -762,3 +762,138 @@
       setTimeout(() => t.classList.add('show'), 10);
       setTimeout(() => { t.classList.remove('show'); setTimeout(() => t.remove(), 300); }, 3500);
     }
+
+
+// ==================== DB PATCH: XỬ LÝ & CHUYỂN BỆNH NHÂN ====================
+// Ghi đè phần xulyBN/renderTransferLog cũ để thao tác trực tiếp với database.
+let transferDoctorsDb = [];
+let transferPatientsDb = [];
+let transferLogDbLoaded = false;
+
+function actionLabelDb(action) {
+  if (action === 'transfer' || action === 'TRANSFER') return 'Chuyển';
+  if (action === 'hold' || action === 'HOLD') return 'Treo';
+  if (action === 'next' || action === 'NEXT') return 'Next hồ sơ';
+  return action || 'Xử lý';
+}
+
+async function loadTransferOptionsFromDb() {
+  try {
+    const data = await fetchJson('/api/doctor/transfer-options?maBS=' + encodeURIComponent(CURRENT_DOCTOR_ID));
+    transferDoctorsDb = data.doctors || [];
+    transferPatientsDb = data.patients || [];
+    renderTransferControlsDb();
+  } catch (err) {
+    console.warn('Không tải được danh sách chuyển bệnh nhân:', err.message);
+  }
+}
+
+async function loadTransferLogFromDb() {
+  try {
+    const rows = await fetchJson('/api/doctor/transfer-log?maBS=' + encodeURIComponent(CURRENT_DOCTOR_ID));
+    transferLog = (rows || []).map(row => ({
+      time: row.ThoiGian ? new Date(row.ThoiGian).toLocaleString('vi-VN') : '',
+      patient: row.TenBenhNhan || row.MaBN || '',
+      doctor: row.ToDoctorName || row.ToMaBS || row.FromDoctorName || '',
+      action: actionLabelDb(row.HanhDong),
+      reason: row.LyDo || '',
+      raw: row
+    }));
+    transferLogDbLoaded = true;
+    renderTransferLog();
+  } catch (err) {
+    console.warn('Không tải được lịch sử chuyển bệnh nhân:', err.message);
+  }
+}
+
+function renderTransferControlsDb() {
+  const patientSelect = getEl('xl-patient');
+  if (patientSelect) {
+    const source = patients.length ? patients : transferPatientsDb.map(normalizePatient);
+    const activePatients = source.filter(p => !['done', 'cancelled'].includes(p.status));
+    patientSelect.innerHTML = activePatients.length
+      ? activePatients.map(p => `<option value="${escapeHTML(p.MaThe || p.raw?.MaThe || '')}">${escapeHTML(p.stt || '')} - ${escapeHTML(p.name)} (${escapeHTML(p.MaBN || '')})</option>`).join('')
+      : '<option value="">Không có bệnh nhân trong hàng đợi</option>';
+  }
+
+  const doctorSelect = getEl('xl-doctor');
+  if (doctorSelect) {
+    doctorSelect.innerHTML = transferDoctorsDb.length
+      ? transferDoctorsDb.map(d => {
+          const room = [d.TenCK, d.TenPhongKham, d.SoPhong ? 'Phòng ' + d.SoPhong : ''].filter(Boolean).join(' · ');
+          return `<option value="${escapeHTML(d.MaBS)}">${escapeHTML(d.HoTen)} - ${escapeHTML(room)}</option>`;
+        }).join('')
+      : '<option value="">Không có bác sĩ khác</option>';
+  }
+}
+
+async function xulyBN() {
+  const maThe = getEl('xl-patient')?.value;
+  const toMaBS = getEl('xl-doctor')?.value;
+  const action = getEl('xl-action')?.value || 'transfer';
+  const reason = getEl('xl-reason')?.value?.trim() || '';
+
+  if (!maThe) {
+    showToast('Vui lòng chọn bệnh nhân cần xử lý!', 'error');
+    return;
+  }
+  if (action === 'transfer' && !toMaBS) {
+    showToast('Vui lòng chọn bác sĩ nhận bệnh nhân!', 'error');
+    return;
+  }
+  if (!reason) {
+    showToast('Vui lòng nhập lý do xử lý/chuyển bệnh nhân!', 'error');
+    return;
+  }
+
+  try {
+    const result = await fetchJson('/api/doctor/transfer', {
+      method: 'POST',
+      body: JSON.stringify({
+        MaThe: maThe,
+        FromMaBS: CURRENT_DOCTOR_ID,
+        ToMaBS: toMaBS,
+        Action: action,
+        LyDo: reason
+      })
+    });
+
+    showToast(result.message || 'Đã xử lý bệnh nhân', 'success');
+    getEl('xl-reason').value = '';
+    await Promise.allSettled([
+      loadDoctorQueue(),
+      loadTransferOptionsFromDb(),
+      loadTransferLogFromDb()
+    ]);
+  } catch (err) {
+    showToast('Không xử lý/chuyển được bệnh nhân: ' + err.message, 'error');
+  }
+}
+
+function renderTransferLog() {
+  renderTransferControlsDb();
+  const c = getEl('transferLog');
+  if (!c) return;
+  if (!transferLog.length) {
+    c.innerHTML = '<div class="empty-state">Chưa có bản ghi chuyển/treo</div>';
+    if (!transferLogDbLoaded) loadTransferLogFromDb();
+    return;
+  }
+  c.innerHTML = transferLog.map(t => `
+    <div class="patient-queue-item">
+      <div class="pq-info">
+        <div class="pq-name">${escapeHTML(t.patient)}</div>
+        <div class="pq-meta">${escapeHTML(t.time)} · ${escapeHTML(t.action)}${t.doctor ? ' → ' + escapeHTML(t.doctor) : ''}</div>
+        ${t.reason ? `<div class="pq-meta">Lý do: ${escapeHTML(t.reason)}</div>` : ''}
+      </div>
+      <span class="pq-badge waiting">${escapeHTML(t.action)}</span>
+    </div>`).join('');
+}
+
+// Nạp danh sách bác sĩ/bệnh nhân chuyển sau khi trang đã khởi tạo xong.
+document.addEventListener('DOMContentLoaded', () => {
+  setTimeout(() => {
+    loadTransferOptionsFromDb();
+    loadTransferLogFromDb();
+  }, 500);
+});

@@ -402,12 +402,13 @@ router.post("/api/patient/booking", async (req, res) => {
         await transaction.request()
             .input("MaLich", sql.VarChar, MaLich)
             .input("MaBN", sql.VarChar, MaBN)
+            .input("MaBS", sql.VarChar, MaBS)
             .input("MaPhongKham", sql.VarChar, MaPhongKham)
             .input("NgayGio", sql.DateTime, ngayGio)
             .input("GhiChu", sql.NVarChar, GhiChu || "")
             .query(`
-        INSERT INTO LichKham (MaLich, MaBN, MaPhongKham, NgayGio, GhiChu, TrangThai)
-        VALUES (@MaLich, @MaBN, @MaPhongKham, @NgayGio, @GhiChu, N'Đã đặt')
+        INSERT INTO LichKham (MaLich, MaBN, MaBS, MaPhongKham, NgayGio, GhiChu, TrangThai)
+        VALUES (@MaLich, @MaBN, @MaBS, @MaPhongKham, @NgayGio, @GhiChu, N'Đã đặt')
       `);
 
         await transaction.request()

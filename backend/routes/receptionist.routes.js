@@ -441,32 +441,160 @@ router.put("/api/receptionist/call-next", async (req, res) => {
 });
 
 router.put("/api/receptionist/transfer/:maThe", async (req, res) => {
+    const pool = await getPool();
+    const transaction = new sql.Transaction(pool);
+
     try {
-        const { MaPhongKham } = req.body;
-        if (!MaPhongKham) return res.status(400).json({ message: "Thiếu MaPhongKham" });
-
-        const pool = await getPool();
-        const hd = await pool.request()
-            .input("MaPhongKham", sql.VarChar, MaPhongKham)
-            .query("SELECT TOP 1 MaHangDoi FROM HangDoi WHERE MaPhongKham = @MaPhongKham");
-
-        if (!hd.recordset.length) {
-            return res.status(404).json({ message: "Không tìm thấy hàng đợi của phòng khám" });
+        const { MaPhongKham, MaBS, LyDo, GhiChu } = req.body;
+        if (!MaPhongKham && !MaBS) {
+            return res.status(400).json({ message: "Thiếu MaPhongKham hoặc MaBS" });
         }
 
-        await pool.request()
-            .input("MaThe", sql.VarChar, req.params.maThe)
-            .input("MaHangDoi", sql.VarChar, hd.recordset[0].MaHangDoi)
+        await transaction.begin();
+
+        let targetRoom = MaPhongKham || null;
+        let targetDoctor = MaBS || null;
+
+        if (targetDoctor) {
+            const doctorResult = await new sql.Request(transaction)
+                .input("MaBS", sql.VarChar(10), targetDoctor)
+                .query(`
+                    SELECT TOP 1 MaBS, MaPhongKham
+                    FROM dbo.BacSi
+                    WHERE MaBS = @MaBS
+                `);
+            if (!doctorResult.recordset.length) {
+                await transaction.rollback();
+                return res.status(404).json({ message: "Không tìm thấy bác sĩ nhận bệnh nhân" });
+            }
+            targetRoom = doctorResult.recordset[0].MaPhongKham;
+        } else {
+            const doctorResult = await new sql.Request(transaction)
+                .input("MaPhongKham", sql.VarChar(20), targetRoom)
+                .query(`
+                    SELECT TOP 1 MaBS
+                    FROM dbo.BacSi
+                    WHERE MaPhongKham = @MaPhongKham
+                    ORDER BY MaBS
+                `);
+            targetDoctor = doctorResult.recordset[0]?.MaBS || null;
+        }
+
+        if (!targetRoom) {
+            await transaction.rollback();
+            return res.status(400).json({ message: "Bác sĩ/phòng nhận chưa hợp lệ" });
+        }
+
+        const ticketResult = await new sql.Request(transaction)
+            .input("MaThe", sql.VarChar(20), req.params.maThe)
             .query(`
-                UPDATE SoThuTu
+                SELECT TOP 1 MaThe, MaBN, MaLich, MaHangDoi
+                FROM dbo.SoThuTu
+                WHERE MaThe = @MaThe
+            `);
+
+        if (!ticketResult.recordset.length) {
+            await transaction.rollback();
+            return res.status(404).json({ message: "Không tìm thấy số thứ tự cần chuyển" });
+        }
+
+        const ticket = ticketResult.recordset[0];
+
+        let hd = await new sql.Request(transaction)
+            .input("MaPhongKham", sql.VarChar(20), targetRoom)
+            .query(`
+                SELECT TOP 1 MaHangDoi, SoThuTuTiepTheo
+                FROM dbo.HangDoi WITH (UPDLOCK, HOLDLOCK)
+                WHERE MaPhongKham = @MaPhongKham
+            `);
+
+        let hangDoi = hd.recordset[0];
+        if (!hangDoi) {
+            const MaHangDoi = ("HD" + Date.now().toString() + Math.floor(Math.random() * 1000).toString().padStart(3, "0")).slice(0, 20);
+            await new sql.Request(transaction)
+                .input("MaHangDoi", sql.VarChar(20), MaHangDoi)
+                .input("MaPhongKham", sql.VarChar(20), targetRoom)
+                .query(`
+                    INSERT INTO dbo.HangDoi (MaHangDoi, MaPhongKham, SoThuTuTiepTheo, SoLuongDangCho)
+                    VALUES (@MaHangDoi, @MaPhongKham, 1, 0)
+                `);
+            hangDoi = { MaHangDoi, SoThuTuTiepTheo: 1 };
+        }
+
+        const soThuTuMoi = Number(hangDoi.SoThuTuTiepTheo || 1);
+
+        await new sql.Request(transaction)
+            .input("MaThe", sql.VarChar(20), req.params.maThe)
+            .input("MaHangDoi", sql.VarChar(20), hangDoi.MaHangDoi)
+            .input("SoThuTu", sql.Int, soThuTuMoi)
+            .query(`
+                UPDATE dbo.SoThuTu
                 SET MaHangDoi = @MaHangDoi,
+                    SoThuTu = @SoThuTu,
                     TrangThaiThe = N'WAITING'
                 WHERE MaThe = @MaThe
             `);
 
-        res.json({ message: "Đã chuyển bệnh nhân sang phòng mới" });
+        await new sql.Request(transaction)
+            .input("MaLich", sql.VarChar(20), ticket.MaLich)
+            .input("MaBS", sql.VarChar(10), targetDoctor)
+            .input("MaPhongKham", sql.VarChar(20), targetRoom)
+            .query(`
+                UPDATE dbo.LichKham
+                SET MaBS = @MaBS,
+                    MaPhongKham = @MaPhongKham,
+                    TrangThai = N'Đã chuyển'
+                WHERE MaLich = @MaLich
+            `);
+
+        await new sql.Request(transaction)
+            .input("MaHangDoi", sql.VarChar(20), hangDoi.MaHangDoi)
+            .query(`
+                UPDATE dbo.HangDoi
+                SET SoThuTuTiepTheo = SoThuTuTiepTheo + 1,
+                    SoLuongDangCho = SoLuongDangCho + 1
+                WHERE MaHangDoi = @MaHangDoi
+            `);
+
+        if (ticket.MaHangDoi && ticket.MaHangDoi !== hangDoi.MaHangDoi) {
+            await new sql.Request(transaction)
+                .input("OldMaHangDoi", sql.VarChar(20), ticket.MaHangDoi)
+                .query(`
+                    UPDATE dbo.HangDoi
+                    SET SoLuongDangCho = CASE WHEN SoLuongDangCho > 0 THEN SoLuongDangCho - 1 ELSE 0 END
+                    WHERE MaHangDoi = @OldMaHangDoi
+                `);
+        }
+
+        const MaXuLy = ("XL" + Date.now().toString() + Math.floor(Math.random() * 1000).toString().padStart(3, "0")).slice(0, 20);
+        await new sql.Request(transaction)
+            .input("MaXuLy", sql.VarChar(20), MaXuLy)
+            .input("MaThe", sql.VarChar(20), req.params.maThe)
+            .input("MaBN", sql.VarChar(10), ticket.MaBN)
+            .input("ToMaBS", sql.VarChar(10), targetDoctor)
+            .input("FromMaHangDoi", sql.VarChar(20), ticket.MaHangDoi)
+            .input("ToMaHangDoi", sql.VarChar(20), hangDoi.MaHangDoi)
+            .input("LyDo", sql.NVarChar(255), [LyDo, GhiChu].filter(Boolean).join(" - "))
+            .query(`
+                INSERT INTO dbo.XuLyChuyenBenhNhan
+                (MaXuLy, MaThe, MaBN, FromMaBS, ToMaBS, FromMaHangDoi, ToMaHangDoi, HanhDong, LyDo, ThoiGian, TrangThaiSau)
+                VALUES
+                (@MaXuLy, @MaThe, @MaBN, NULL, @ToMaBS, @FromMaHangDoi, @ToMaHangDoi, N'TRANSFER', @LyDo, GETDATE(), N'WAITING')
+            `);
+
+        await transaction.commit();
+
+        res.json({
+            message: "Đã chuyển bệnh nhân sang bác sĩ/phòng mới",
+            MaThe: req.params.maThe,
+            MaBS: targetDoctor,
+            MaPhongKham: targetRoom,
+            MaHangDoi: hangDoi.MaHangDoi,
+            SoThuTuMoi: soThuTuMoi
+        });
     } catch (err) {
-        res.status(500).json({ message: "Lỗi chuyển phòng", error: err.message });
+        try { await transaction.rollback(); } catch (_) { }
+        res.status(500).json({ message: "Lỗi chuyển phòng/bác sĩ", error: err.message });
     }
 });
 
