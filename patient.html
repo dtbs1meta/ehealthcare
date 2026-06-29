@@ -1337,7 +1337,7 @@
         <div class="user-avatar" id="headerAvatar">BN</div>
         <span class="user-name" id="headerUserName">Bệnh nhân</span>
       </div>
-      <button class="btn-logout" onclick="location.href='index.html'">Đăng xuất</button>
+      <button class="btn-logout" onclick="logout()">Đăng xuất</button>
     </div>
   </header>
 
@@ -1793,19 +1793,26 @@
   <script>
 
     // ==================== SESSION & AUTH ====================
-    // Auto-login for demo (remove in production)
-    if (!sessionStorage.getItem('user')) {
-      sessionStorage.setItem('user', JSON.stringify({ maBN: 'BN001', role: 'patient' }));
-    }
-    const user = JSON.parse(sessionStorage.getItem('user') || '{"maBN":"BN001","role":"patient"}');
-    if (!user || user.role !== 'patient') {
+    // Mỗi bệnh nhân phải đăng nhập riêng từ index.html.
+    // Không auto-login BN001 nữa, để tránh tài khoản nào cũng xem cùng một hồ sơ.
+    const user = JSON.parse(sessionStorage.getItem('user') || 'null');
+    if (!user || user.role !== 'patient' || !(user.maBN || user.MaBN)) {
       window.location.href = 'index.html';
+      throw new Error('Chưa đăng nhập tài khoản bệnh nhân');
     }
 
-    let CURRENT_BN_ID = (user.maBN || user.MaBN || 'BN001').toString().trim();
-    if (!/^BN\d+$/i.test(CURRENT_BN_ID)) CURRENT_BN_ID = 'BN001';
-    CURRENT_BN_ID = CURRENT_BN_ID.toUpperCase();
+    let CURRENT_BN_ID = (user.maBN || user.MaBN).toString().trim().toUpperCase();
+    if (!/^BN\d+$/i.test(CURRENT_BN_ID)) {
+      sessionStorage.removeItem('user');
+      window.location.href = 'index.html';
+      throw new Error('Mã bệnh nhân không hợp lệ');
+    }
     sessionStorage.setItem('user', JSON.stringify({ ...user, role: 'patient', maBN: CURRENT_BN_ID }));
+
+    function logout() {
+      sessionStorage.removeItem('user');
+      window.location.href = 'index.html';
+    }
 
     // ==================== DATA ====================
     let state = { spec: null, doctor: null, date: null, slot: null, bookings: [] };
@@ -2456,13 +2463,9 @@
       }
 
       try {
-        if (!currentHoSo) {
-          showToast('Không tìm thấy hồ sơ y tế. Vui lòng liên hệ nhân viên.', 'error');
-          return;
-        }
-
+        // Nếu bệnh nhân chưa có hồ sơ y tế, backend sẽ tự tạo MaHS mới
         const newPhieu = await API.post('/api/phieu-kham', {
-          MaHS: currentHoSo.MaHS,
+          MaHS: currentHoSo?.MaHS || null,
           MaBN: CURRENT_BN_ID,
           MaBS: maBS,
           NgayKham: date,
