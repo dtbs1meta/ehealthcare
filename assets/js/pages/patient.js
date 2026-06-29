@@ -244,68 +244,147 @@ const API_BASE = window.API_BASE || "http://localhost:3000";
       }
     }
 
+    const RAG_BASE_URL = window.RAG_BASE_URL || 'http://localhost:8000';
+
+    function keywordSymptomSuggest(text) {
+      const keywordMap = {
+        'đau đầu': ['Thần kinh', 'Nội khoa'],
+        'sốt': ['Nội khoa', 'Nhi khoa'],
+        'ho': ['Nội khoa', 'Tai Mũi Họng'],
+        'đau ngực': ['Tim mạch', 'Nội khoa'],
+        'đau bụng': ['Nội khoa', 'Ngoại khoa'],
+        'mụn': ['Da liễu'],
+        'ngứa': ['Da liễu', 'Nội khoa'],
+        'đau mắt': ['Mắt'],
+        'đau tai': ['Tai Mũi Họng'],
+        'đau răng': ['Tai Mũi Họng'],
+        'đau khớp': ['Cơ xương khớp'],
+        'đau lưng': ['Cơ xương khớp', 'Thần kinh'],
+        'chóng mặt': ['Thần kinh', 'Tai Mũi Họng'],
+        'khó thở': ['Tim mạch', 'Nội khoa'],
+        'tiểu nhiều': ['Nội khoa'],
+        'kinh nguyệt': ['Sản phụ khoa'],
+        'thai': ['Sản phụ khoa'],
+        'trẻ em': ['Nhi khoa'],
+        'trẻ': ['Nhi khoa']
+      };
+      const lowerTxt = text.toLowerCase();
+      let suggested = [];
+      for (const [kw, depts] of Object.entries(keywordMap)) {
+        if (lowerTxt.includes(kw)) suggested.push(...depts);
+      }
+      return [...new Set(suggested)];
+    }
+
+    function escapeHtml(value) {
+      return String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+    }
+
+    function clearAISuggestionHighlight() {
+      document.querySelectorAll('.spec-chip').forEach(chip => {
+        chip.style.borderColor = '';
+        chip.style.borderWidth = '';
+        chip.style.boxShadow = '';
+      });
+    }
+
+    function showAISuggestionResult(message, type = 'success') {
+      const box = document.getElementById('aiSuggestionResult');
+      if (!box) return;
+      box.style.display = 'block';
+      box.innerHTML = message;
+      box.style.borderColor = type === 'warning' ? 'var(--warning)' : 'var(--primary)';
+      box.style.background = type === 'warning' ? 'var(--warning-light)' : 'var(--primary-light)';
+    }
+
+    async function askRAGForSpecialty(symptomText, specNames) {
+      const prompt = `Bạn là trợ lý AI của hệ thống eHealthCare. Nhiệm vụ: dựa trên triệu chứng bệnh nhân mô tả, chỉ gợi ý chuyên khoa phù hợp trong danh sách sau: ${specNames.join(', ')}. Không chẩn đoán bệnh. Trả lời ngắn gọn bằng tiếng Việt, gồm: 1) Chuyên khoa gợi ý, 2) Lý do ngắn, 3) Lưu ý đi khám sớm nếu triệu chứng nặng. Triệu chứng bệnh nhân: ${symptomText}`;
+
+      const res = await fetch(`${RAG_BASE_URL}/chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: prompt,
+          history: [],
+          session_id: `patient-symptom-${CURRENT_BN_ID || 'guest'}`
+        })
+      });
+
+      if (!res.ok) throw new Error(`AI backend lỗi HTTP ${res.status}`);
+      const data = await res.json();
+      return data.reply || '';
+    }
+
     async function analyzeSymptom() {
       const txt = document.getElementById('symptomInput').value.trim();
       if (!txt) { showToast('Vui lòng nhập triệu chứng!', 'warning'); return; }
 
       const btn = document.querySelector('button[onclick="analyzeSymptom()"]');
-      const originalText = btn.innerHTML;
-      btn.disabled = true;
-      btn.innerHTML = '⏳ Đang phân tích...';
+      const originalText = btn ? btn.innerHTML : '';
+      if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '⏳ AI đang phân tích...';
+      }
+      clearAISuggestionHighlight();
 
       try {
         const specs = await API.get('/api/chuyen-khoa');
-        const specNames = specs.map(s => s.TenCK).join(', ');
+        const specNames = specs.map(s => s.TenCK);
 
-        // Simple keyword-based suggestion (no external API needed)
-        const keywordMap = {
-          'đau đầu': ['Thần kinh', 'Nội khoa'],
-          'sốt': ['Nội khoa', 'Nhi khoa'],
-          'ho': ['Nội khoa', 'Tai Mũi Họng'],
-          'đau ngực': ['Tim mạch', 'Nội khoa'],
-          'đau bụng': ['Nội khoa', 'Ngoại khoa'],
-          'mụn': ['Da liễu'],
-          'ngứa': ['Da liễu', 'Nội khoa'],
-          'đau mắt': ['Mắt'],
-          'đau tai': ['Tai Mũi Họng'],
-          'đau răng': ['Tai Mũi Họng'],
-          'đau khớp': ['Cơ xương khớp'],
-          'đau lưng': ['Cơ xương khớp', 'Thần kinh'],
-          'chóng mặt': ['Thần kinh', 'Tai Mũi Họng'],
-          'khó thở': ['Tim mạch', 'Nội khoa'],
-          'tiểu nhiều': ['Nội khoa'],
-          'kinh nguyệt': ['Sản phụ khoa'],
-          'thai': ['Sản phụ khoa'],
-          'trẻ em': ['Nhi khoa'],
-          'trẻ': ['Nhi khoa']
-        };
-
-        const lowerTxt = txt.toLowerCase();
+        let aiReply = '';
         let suggested = [];
-        for (const [kw, depts] of Object.entries(keywordMap)) {
-          if (lowerTxt.includes(kw)) suggested.push(...depts);
+        let usedAI = true;
+
+        try {
+          aiReply = await askRAGForSpecialty(txt, specNames);
+          const aiReplyLower = aiReply.toLowerCase();
+          suggested = specNames.filter(name => aiReplyLower.includes(name.toLowerCase()));
+
+          // Nếu AI trả lời diễn giải nhưng không ghi đúng tên khoa trong DB, dùng thêm bộ từ khóa để vẫn tô sáng được.
+          if (suggested.length === 0) {
+            suggested = keywordSymptomSuggest(txt).filter(name => specNames.includes(name));
+          }
+        } catch (aiError) {
+          console.warn('AI backend chưa chạy, dùng gợi ý keyword:', aiError.message);
+          usedAI = false;
+          suggested = keywordSymptomSuggest(txt);
+          aiReply = suggested.length
+            ? `Gợi ý tạm thời theo từ khóa: ${suggested.join(', ')}. AI backend chưa chạy nên hệ thống dùng bộ luật đơn giản.`
+            : 'AI backend chưa chạy và hệ thống chưa nhận diện được triệu chứng cụ thể. Vui lòng chọn khoa thủ công.';
         }
-        suggested = [...new Set(suggested)];
+
+        suggested = [...new Set(suggested)].filter(name => specNames.includes(name));
 
         if (suggested.length === 0) {
-          showToast('Không nhận diện được triệu chứng cụ thể. Vui lòng chọn khoa thủ công.', 'warning');
-        } else {
-          // Highlight suggested chips
-          specs.forEach(s => {
-            const chip = document.getElementById(`spec-${s.MaCK}`);
-            if (chip && suggested.includes(s.TenCK)) {
-              chip.style.borderColor = 'var(--warning)';
-              chip.style.borderWidth = '2px';
-            }
-          });
-          showToast('💡 Gợi ý: ' + suggested.join(', ') + ' — Vui lòng chọn khoa phù hợp', 'success');
+          showAISuggestionResult(`⚠️ ${aiReply}`, 'warning');
+          showToast('Không nhận diện được chuyên khoa cụ thể. Vui lòng chọn khoa thủ công.', 'warning');
+          return;
         }
+
+        specs.forEach(s => {
+          const chip = document.getElementById(`spec-${s.MaCK}`);
+          if (chip && suggested.includes(s.TenCK)) {
+            chip.style.borderColor = 'var(--warning)';
+            chip.style.borderWidth = '2px';
+            chip.style.boxShadow = '0 0 0 4px rgba(230,81,0,0.12)';
+          }
+        });
+
+        showAISuggestionResult(`🤖 <strong>${usedAI ? 'AI gợi ý' : 'Gợi ý tạm thời'}:</strong><br>${escapeHtml(aiReply).replace(/\n/g, '<br>')}<br><br><strong>Chuyên khoa được tô sáng:</strong> ${suggested.join(', ')}`);
+        showToast('💡 Gợi ý: ' + suggested.join(', ') + ' — Vui lòng chọn khoa phù hợp', 'success');
       } catch (e) {
         console.error(e);
         showToast('Không thể phân tích triệu chứng. Vui lòng chọn khoa thủ công.', 'warning');
       } finally {
-        btn.disabled = false;
-        btn.innerHTML = originalText;
+        if (btn) {
+          btn.disabled = false;
+          btn.innerHTML = originalText;
+        }
       }
     }
 

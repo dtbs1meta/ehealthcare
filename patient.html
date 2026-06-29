@@ -37,6 +37,7 @@
       <button class="sidebar-link" onclick="showPage('records', this)">📋 Hồ sơ & Phiếu khám</button>
       <button class="sidebar-link" onclick="showPage('notifications', this)">🔔 Thông báo</button>
       <button class="sidebar-link" onclick="showPage('profile', this)">👤 Cập nhật hồ sơ</button>
+      <button class="sidebar-link" onclick="showPage('ai', this)">🤖 AI gợi ý</button>
 
       <div class="sidebar-section">Khác</div>
       <button class="sidebar-link" onclick="showPage('cancel', this)">❌ Hủy lịch khám</button>
@@ -86,6 +87,7 @@
               <textarea id="symptomInput" rows="2" placeholder="Ví dụ: Tôi bị đau đầu, sốt, mệt mỏi..."></textarea>
               <div style="margin-top:8px;"><button class="btn btn-outline btn-sm" onclick="analyzeSymptom()">✨ AI phân
                   tích triệu chứng</button></div>
+              <div id="aiSuggestionResult" class="ai-suggestion-result" style="display:none;"></div>
             </div>
             <div class="section-label">Danh sách chuyên khoa</div>
             <div class="specialty-grid" id="specialtyGrid">
@@ -320,6 +322,25 @@
               <button class="btn btn-ghost" onclick="resetProfile()">↩ Đặt lại</button>
               <button class="btn btn-primary" onclick="saveProfile()">💾 Lưu cập nhật</button>
             </div>
+          </div>
+        </div>
+      </div>
+
+
+      <!-- ====== PAGE: AI GỢI Ý ====== -->
+      <div class="page" id="page-ai">
+        <div class="page-title">AI gợi ý cho bệnh nhân</div>
+        <div class="page-subtitle">Hỏi AI về triệu chứng, chuyên khoa nên khám, quy trình đặt lịch và hồ sơ khám bệnh</div>
+        <div class="card ai-page-card">
+          <div class="card-header">
+            <div class="card-icon">🤖</div>
+            <div>
+              <div class="card-title">eHealthCare AI Assistant</div>
+              <div class="card-desc">AI chạy qua FastAPI RAG tại cổng 8000</div>
+            </div>
+          </div>
+          <div class="card-body ai-frame-body">
+            <iframe class="ai-chat-frame" src="ai/index.html" title="eHealthCare AI Assistant"></iframe>
           </div>
         </div>
       </div>

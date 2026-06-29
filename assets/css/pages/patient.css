@@ -1263,3 +1263,28 @@
         grid-template-columns: 1fr;
       }
     }
+
+
+/* ===== AI PATIENT SUGGESTION ===== */
+.ai-suggestion-result {
+  margin-top: 10px;
+  padding: 12px 14px;
+  border: 1.5px solid var(--primary);
+  background: var(--primary-light);
+  border-radius: 10px;
+  font-size: 13px;
+  color: var(--text-main);
+  line-height: 1.6;
+}
+.ai-page-card { overflow: hidden; }
+.ai-frame-body { padding: 0; height: calc(100vh - 190px); min-height: 560px; }
+.ai-chat-frame {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  display: block;
+  background: #0f172a;
+}
+@media (max-width: 768px) {
+  .ai-frame-body { height: 720px; min-height: 720px; }
+}

@@ -1,7 +1,8 @@
 node_modules/
 .vs/
 .vscode/
-**/__pycache__/*
+__pycache__/
 .env
 static_docs/
 chroma_db/
+venv/
