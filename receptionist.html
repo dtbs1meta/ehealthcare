@@ -514,6 +514,15 @@ function normalizeQueueItem(item) {
   };
 }
 
+function uniqueQueueRows(list) {
+  const seen = new Map();
+  (list || []).forEach(item => {
+    const key = item.MaThe || `${item.MaBN || ''}-${item.MaHangDoi || item.MaPhongKham || ''}-${item.SoThuTu || ''}-${item.ThoiGianCap || ''}`;
+    if (!seen.has(key)) seen.set(key, item);
+  });
+  return Array.from(seen.values());
+}
+
 function normalizePatient(item) {
   const q = queue.find(x => x.MaBN === item.MaBN);
   return {
@@ -579,7 +588,7 @@ async function loadRooms() {
 
 async function loadQueue() {
   const data = await apiTry(['/api/receptionist/queue', '/api/doctor/queue', '/api/sothutu']);
-  queue = (Array.isArray(data) ? data : []).map(normalizeQueueItem);
+  queue = uniqueQueueRows((Array.isArray(data) ? data : []).map(normalizeQueueItem));
 }
 
 async function loadPatients() {
@@ -636,8 +645,8 @@ function showPage(pageId, btn) {
 
 // ==================== STATS ====================
 function updateStats() {
-  const todayQueue = queue;
-  const waiting = queue.filter(s => s.status === 'WAITING');
+  const todayQueue = uniqueQueueRows(queue);
+  const waiting = uniqueQueueRows(queue).filter(s => s.status === 'WAITING');
   const p1 = waiting.filter(s => s.priority === 1).length;
   const p2 = waiting.filter(s => s.priority === 2).length;
 
@@ -769,7 +778,7 @@ function renderQueue() {
   const search = (document.getElementById('queueSearch')?.value || '').toLowerCase();
   const filter = document.getElementById('queueFilter')?.value || 'all';
   const c = document.getElementById('queueList');
-  let data = queue.filter(q => q.status === 'WAITING' || q.status === 'CALLED');
+  let data = uniqueQueueRows(queue).filter(q => q.status === 'WAITING' || q.status === 'CALLED');
   if (filter !== 'all') data = data.filter(q => q.priority === parseInt(filter));
   if (search) data = data.filter(q => q.name.toLowerCase().includes(search) || q.stt.toLowerCase().includes(search) || q.phone.includes(search));
   data = computeQueueOrder(data);
@@ -797,7 +806,7 @@ function renderQueue() {
 
 function renderPriority() {
   const c = document.getElementById('priorityList');
-  const data = computeQueueOrder(queue.filter(q => q.status === 'WAITING'));
+  const data = computeQueueOrder(uniqueQueueRows(queue).filter(q => q.status === 'WAITING')); 
   if (!data.length) {
     c.innerHTML = '<tr><td colspan="7" class="empty-state">Không có bệnh nhân ưu tiên</td></tr>';
     return;
@@ -817,7 +826,7 @@ function renderPriority() {
 // ==================== QUEUE ACTIONS ====================
 async function nextPatient() {
   try {
-    const waiting = queue.filter(q => q.status === 'WAITING');
+    const waiting = uniqueQueueRows(queue).filter(q => q.status === 'WAITING');
     if (!waiting.length) {
       showToast('Không có bệnh nhân đang chờ!', 'warning');
       return;

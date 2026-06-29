@@ -382,9 +382,14 @@ app.get("/api/receptionist/queue", async (req, res) => {
             LEFT JOIN HangDoi hd ON stt.MaHangDoi = hd.MaHangDoi
             LEFT JOIN PhongKham pk ON hd.MaPhongKham = pk.MaPhongKham
             LEFT JOIN ChuyenKhoa ck ON pk.MaCK = ck.MaCK
-            LEFT JOIN BacSi bs ON pk.MaPhongKham = bs.MaPhongKham
             OUTER APPLY (
-                SELECT TOP 1 GhiChu
+                SELECT TOP 1 b.HoTen
+                FROM BacSi b
+                WHERE b.MaPhongKham = pk.MaPhongKham
+                ORDER BY b.MaBS
+            ) bs
+            OUTER APPLY (
+                SELECT TOP 1 p.GhiChu
                 FROM PhieuTiepNhan p
                 WHERE p.MaBN = bn.MaBN
                 ORDER BY p.NgayTiepNhan DESC
