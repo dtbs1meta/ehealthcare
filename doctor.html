@@ -491,9 +491,222 @@ let currentPatient = null;
 let transferLog = [];
 let rxRows = 1;
 
+// ==================== LOCALSTORAGE QUEUE SYNC ====================
+const QUEUE_KEY = 'SoThuTu';
+const EXAM_RESULT_KEY = 'ExamResults';
+let queueChannel = null;
+
+function readJSON(key, fallback) {
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return fallback;
+    const parsed = JSON.parse(raw);
+    return parsed ?? fallback;
+  } catch (err) {
+    console.warn('Không đọc được dữ liệu localStorage:', key, err);
+    return fallback;
+  }
+}
+
+function writeJSON(key, value) {
+  localStorage.setItem(key, JSON.stringify(value));
+}
+
+function firstValue(obj, keys, fallback = '') {
+  if (!obj) return fallback;
+  for (const key of keys) {
+    const value = obj[key];
+    if (value !== undefined && value !== null && value !== '') return value;
+  }
+  return fallback;
+}
+
+function normalizeStatus(status) {
+  const s = String(status || '').trim().toUpperCase();
+  if (['CALLED', 'CALLING', 'SERVING', 'IN_PROGRESS', 'DANG_KHAM', 'ĐANG KHÁM'].includes(s)) return 'serving';
+  if (['DONE', 'COMPLETED', 'FINISHED', 'DA_KHAM', 'ĐÃ KHÁM', 'HOAN_TAT', 'HOÀN TẤT'].includes(s)) return 'done';
+  if (['SKIPPED', 'HOLD', 'PAUSED', 'BO_QUA', 'BỎ QUA'].includes(s)) return 'hold';
+  return 'waiting';
+}
+
+function normalizeQueueItem(item, index) {
+  const source = item || {};
+  const patient = source.BenhNhan || source.patient || source.HoSo || {};
+  const full = Object.assign({}, patient, source);
+  const rawId = firstValue(full, ['id', 'MaBN', 'MaBenhNhan', 'MaNguoiDung', 'MaHS', 'MaSTT', 'queueId'], index + 1000);
+  const normalizedId = Number(String(rawId).replace(/\D/g, '')) || index + 1000;
+  const name = firstValue(full, ['name', 'HoTen', 'TenBenhNhan', 'tenBenhNhan', 'HoTenBN', 'patientName'], 'Bệnh nhân chưa rõ');
+  const year = firstValue(full, ['yob', 'NamSinh', 'namSinh', 'birthYear'], '');
+  const dob = firstValue(full, ['NgaySinh', 'ngaySinh', 'dob'], '');
+  const currentYear = new Date().getFullYear();
+  const parsedYear = Number(year) || (dob ? Number(String(dob).slice(0, 4)) : '');
+  const age = firstValue(full, ['Tuoi', 'tuoi', 'age'], '');
+  const estimatedYob = parsedYear || (age ? currentYear - Number(age) : 1990);
+
+  return {
+    id: normalizedId,
+    stt: String(firstValue(full, ['stt', 'STT', 'SoThuTu', 'ThuTu', 'queueNumber'], index + 1)).startsWith('A')
+      ? String(firstValue(full, ['stt', 'STT', 'SoThuTu', 'ThuTu', 'queueNumber'], index + 1))
+      : 'A' + String(firstValue(full, ['stt', 'STT', 'SoThuTu', 'ThuTu', 'queueNumber'], index + 1)).padStart(3, '0'),
+    name,
+    yob: estimatedYob,
+    gender: firstValue(full, ['gender', 'GioiTinh', 'gioiTinh', 'genderText'], 'Chưa rõ'),
+    phone: firstValue(full, ['phone', 'SDT', 'Sdt', 'DienThoai', 'SoDienThoai', 'soDienThoai'], ''),
+    status: normalizeStatus(firstValue(full, ['status', 'TrangThai', 'trangThai', 'TinhTrang'], 'waiting')),
+    symptom: firstValue(full, ['symptom', 'TrieuChung', 'trieuChung', 'LyDoKham', 'lyDoKham', 'GhiChu'], 'Chưa cập nhật triệu chứng'),
+    history: firstValue(full, ['history', 'TienSuBenh', 'tienSuBenh', 'TienSu', 'tienSu'], 'Chưa có tiền sử'),
+    allergy: firstValue(full, ['allergy', 'DiUng', 'diUng', 'TienSuDiUng', 'tienSuDiUng'], 'Không'),
+    weight: Number(firstValue(full, ['weight', 'CanNang', 'canNang'], 0)) || '',
+    height: Number(firstValue(full, ['height', 'ChieuCao', 'chieuCao'], 0)) || '',
+    bloodPressure: firstValue(full, ['HuyetAp', 'huyetAp', 'bloodPressure'], ''),
+    pulse: firstValue(full, ['Mach', 'mach', 'pulse'], ''),
+    temperature: firstValue(full, ['NhietDo', 'nhietDo', 'temperature'], ''),
+    breathing: firstValue(full, ['NhipTho', 'nhipTho', 'breathing'], '')
+  };
+}
+
+function getQueueData() {
+  const raw = readJSON(QUEUE_KEY, []);
+  if (Array.isArray(raw)) return raw;
+  if (Array.isArray(raw.items)) return raw.items;
+  if (Array.isArray(raw.data)) return raw.data;
+  return [];
+}
+
+function loadCurrentPatientFromQueue(options = {}) {
+  const queue = getQueueData();
+  if (!queue.length) {
+    if (!options.silent) console.log('Không có dữ liệu hàng chờ trong localStorage.');
+    return null;
+  }
+
+  const normalized = queue.map(normalizeQueueItem);
+  patients.splice(0, patients.length, ...normalized);
+
+  const current = normalized.find(p => p.status === 'serving') || normalized.find(p => p.status === 'waiting');
+  if (current) {
+    console.log('Bệnh nhân hiện tại:', current);
+    const oldSelectedId = currentPatient?.id;
+    currentPatient = normalized.find(p => p.id === oldSelectedId) || currentPatient;
+  }
+
+  if (!options.skipRender) refreshDoctorUIFromQueue();
+  return current || null;
+}
+
+function savePatientsToQueue() {
+  const queue = patients.map((p, index) => ({
+    MaBN: p.id,
+    SoThuTu: Number(String(p.stt || index + 1).replace(/\D/g, '')) || index + 1,
+    HoTen: p.name,
+    NamSinh: p.yob,
+    GioiTinh: p.gender,
+    SDT: p.phone,
+    TrangThai: p.status === 'serving' ? 'CALLING' : p.status === 'done' ? 'DONE' : p.status === 'hold' ? 'SKIPPED' : 'WAITING',
+    TrieuChung: p.symptom,
+    TienSuBenh: p.history,
+    DiUng: p.allergy,
+    CanNang: p.weight,
+    ChieuCao: p.height,
+    HuyetAp: p.bloodPressure || ''
+  }));
+
+  writeJSON(QUEUE_KEY, queue);
+  localStorage.setItem('doctorQueueUpdatedAt', String(Date.now()));
+  if (queueChannel) queueChannel.postMessage({ type: 'QUEUE_UPDATED', source: 'doctor' });
+}
+
+function refreshDoctorUIFromQueue() {
+  updateDash();
+  renderBNList();
+  renderKBPatients();
+  renderHSList();
+  renderTransferLog();
+}
+
+function wireQueueSync() {
+  window.addEventListener('storage', (event) => {
+    if (!event.key || [QUEUE_KEY, 'doctorQueueUpdatedAt', 'receptionQueueUpdatedAt'].includes(event.key)) {
+      loadCurrentPatientFromQueue({ silent: true });
+    }
+  });
+
+  if ('BroadcastChannel' in window) {
+    queueChannel = new BroadcastChannel('ehealthcare_queue');
+    queueChannel.onmessage = (event) => {
+      if (event.data?.type === 'QUEUE_UPDATED' && event.data?.source !== 'doctor') {
+        loadCurrentPatientFromQueue({ silent: true });
+      }
+    };
+  }
+}
+
+function getCurrentAllergies() {
+  if (!currentPatient) return [];
+  const text = String(currentPatient.allergy || '').toLowerCase();
+  if (!text || text === 'không' || text === 'khong') return [];
+  return text.split(/[,;\/\-]+/).map(x => x.trim()).filter(Boolean);
+}
+
+function checkDrugAllergy(input) {
+  const drugName = String(input?.value || '').toLowerCase();
+  const allergies = getCurrentAllergies();
+  if (!drugName || !allergies.length) return;
+
+  const matched = allergies.find(a => drugName.includes(a) || a.includes(drugName));
+  if (matched) {
+    input.style.borderColor = 'var(--error)';
+    showToast(`Cảnh báo: bệnh nhân có tiền sử dị ứng ${matched}!`, 'warning');
+  } else {
+    input.style.borderColor = '';
+  }
+}
+
+function saveExamResultForPatient(patient, drugs) {
+  const results = readJSON(EXAM_RESULT_KEY, []);
+  const result = {
+    id: Date.now(),
+    MaBN: patient.id,
+    HoTen: patient.name,
+    SDT: patient.phone,
+    NgayKham: new Date().toISOString(),
+    BacSi: 'BS. Nguyễn Hữu Long',
+    Mach: document.getElementById('kb-mach').value,
+    NhietDo: document.getElementById('kb-nhietdo').value,
+    HuyetAp: document.getElementById('kb-huyetap').value,
+    NhipTho: document.getElementById('kb-nhiptho').value,
+    CanNang: document.getElementById('kb-cannang').value,
+    ChieuCao: document.getElementById('kb-chieucao').value,
+    LyDoKham: document.getElementById('kb-lydo').value,
+    TomTatBenhAn: document.getElementById('kb-tomtat').value,
+    ChanDoan: document.getElementById('cd-icd').value || document.getElementById('cd-chitiet').value,
+    ChanDoanChiTiet: document.getElementById('cd-chitiet').value,
+    HuongDieuTri: document.getElementById('cd-huong').value,
+    LoiKhuyen: document.getElementById('cd-loikhuyen').value,
+    NgayTaiKham: document.getElementById('cd-taikham').value,
+    DonThuoc: drugs
+  };
+
+  results.unshift(result);
+  writeJSON(EXAM_RESULT_KEY, results);
+
+  if (typeof API !== 'undefined' && API && typeof API.post === 'function') {
+    API.post('/api/ket-qua-kham', result).catch(() => {});
+  }
+
+  if (typeof saveExamResult === 'function') {
+    try { saveExamResult(result); } catch (err) { console.warn('saveExamResult mock lỗi:', err); }
+  }
+
+  return result;
+}
+
+
 // ==================== INIT ====================
 document.addEventListener('DOMContentLoaded', () => {
-  updateDash(); renderBNList(); renderKBPatients(); renderRxHistory(); renderHSList();
+  loadCurrentPatientFromQueue({ silent: true });
+  wireQueueSync();
+  updateDash(); renderBNList(); renderKBPatients(); renderRxHistory(); renderHSList(); renderTransferLog();
   document.getElementById('cd-taikham').value = new Date(Date.now()+14*864e5).toISOString().split('T')[0];
   addRxRow();
 });
@@ -531,12 +744,16 @@ function updateDash() {
 }
 
 function nextBN() {
+  loadCurrentPatientFromQueue({ silent: true, skipRender: true });
   const next = patients.find(p => p.status === 'waiting');
   if (!next) { showToast('Không có bệnh nhân chờ!','warning'); return; }
   patients.forEach(p => { if(p.status==='serving') p.status='done'; });
   next.status = 'serving';
+  currentPatient = next;
+  savePatientsToQueue();
   showToast(`Gọi bệnh nhân ${next.name} - ${next.stt}`,'success');
   updateDash(); renderBNList(); renderKBPatients();
+  selectPatient(next.id);
 }
 
 // ==================== BN LIST ====================
@@ -567,13 +784,26 @@ function renderKBPatients() {
 }
 
 function selectPatient(id) {
-  currentPatient = patients.find(p => p.id === id);
+  currentPatient = patients.find(p => String(p.id) === String(id));
   if (!currentPatient) return;
+
+  if (currentPatient.status === 'waiting') {
+    currentPatient.status = 'serving';
+    savePatientsToQueue();
+  }
+
   document.getElementById('kb-patientName').innerHTML = `${currentPatient.name} <span style="font-weight:400;font-size:13px;color:var(--text-sub);">(${new Date().getFullYear()-currentPatient.yob}t - ${currentPatient.gender})</span>`;
   document.getElementById('kb-cannang').value = currentPatient.weight || '';
   document.getElementById('kb-chieucao').value = currentPatient.height || '';
+  document.getElementById('kb-huyetap').value = currentPatient.bloodPressure || '';
+  document.getElementById('kb-mach').value = currentPatient.pulse || '';
+  document.getElementById('kb-nhietdo').value = currentPatient.temperature || '';
+  document.getElementById('kb-nhiptho').value = currentPatient.breathing || '';
   document.getElementById('kb-lydo').value = currentPatient.symptom || '';
+  document.getElementById('kb-tomtat').value = `Tiền sử: ${currentPatient.history || 'Chưa có'}\nDị ứng: ${currentPatient.allergy || 'Không'}`;
+
   renderKBPatients();
+  updateDash();
   showPage('khambenh', document.querySelectorAll('.sidebar-link')[2]);
 }
 
@@ -587,25 +817,47 @@ function addRxRow() {
     <td><input type="text" placeholder="Ngày 2 lần" class="rx-usage"></td>
     <td><button class="btn btn-danger btn-sm" onclick="this.closest('tr').remove()">✕</button></td>`;
   tbody.appendChild(tr);
+  const drugInput = tr.querySelector('.rx-name');
+  drugInput.addEventListener('input', () => checkDrugAllergy(drugInput));
+  drugInput.addEventListener('blur', () => checkDrugAllergy(drugInput));
 }
 
 function saveKB() {
   if (!currentPatient) { showToast('Vui lòng chọn bệnh nhân!','error'); return; }
-  // Save to history
+
   const drugs = [];
   document.querySelectorAll('#rxBody tr').forEach(tr => {
-    const name = tr.querySelector('.rx-name')?.value;
-    if (name) drugs.push({ name, dose: tr.querySelector('.rx-dose')?.value||'', qty: tr.querySelector('.rx-qty')?.value||0, usage: tr.querySelector('.rx-usage')?.value||'' });
+    const name = tr.querySelector('.rx-name')?.value?.trim();
+    if (name) {
+      drugs.push({
+        name,
+        dose: tr.querySelector('.rx-dose')?.value||'',
+        unit: tr.querySelector('.rx-unit')?.value||'',
+        qty: tr.querySelector('.rx-qty')?.value||0,
+        usage: tr.querySelector('.rx-usage')?.value||''
+      });
+    }
   });
-  if (drugs.length) {
-    rxHistory.unshift({ id: Date.now(), date: new Date().toLocaleDateString('vi-VN'), patient: currentPatient.name,
-      doctor: 'BS. Nguyễn Hữu Long', drugs, diagnosis: document.getElementById('cd-icd').value || document.getElementById('cd-chitiet').value || '' });
+
+  if (!document.getElementById('cd-icd').value && !document.getElementById('cd-chitiet').value) {
+    showToast('Vui lòng nhập chuẩn đoán trước khi lưu!','warning');
+    return;
   }
+
+  const result = saveExamResultForPatient(currentPatient, drugs);
+
+  if (drugs.length) {
+    rxHistory.unshift({ id: result.id, date: new Date().toLocaleDateString('vi-VN'), patient: currentPatient.name,
+      doctor: 'BS. Nguyễn Hữu Long', drugs, diagnosis: result.ChanDoan || '' });
+  }
+
   currentPatient.status = 'done';
+  savePatientsToQueue();
+
   document.getElementById('kb-success').style.display = 'flex';
   showToast('Đã lưu hồ sơ khám và kê đơn thành công!','success');
   setTimeout(() => { document.getElementById('kb-success').style.display = 'none'; resetKB(); }, 2000);
-  updateDash(); renderBNList(); renderKBPatients(); renderRxHistory();
+  updateDash(); renderBNList(); renderKBPatients(); renderRxHistory(); renderHSList();
 }
 
 function resetKB() {
@@ -720,6 +972,7 @@ function xulyBN() {
     else if (action === 'next') p.status = 'waiting';
   }
   transferLog.unshift({ time: new Date().toLocaleString('vi-VN'), patient: patientName, doctor, action: action==='transfer'?'Chuyển':action==='hold'?'Treo':'Next hồ sơ', reason });
+  savePatientsToQueue();
   showToast(`Đã ${action==='transfer'?'chuyển':action==='hold'?'treo':'next hồ sơ cho'} ${patientName}`,`success`);
   renderTransferLog(); updateDash(); renderBNList(); renderKBPatients();
   document.getElementById('xl-reason').value = '';
