@@ -1,5 +1,7 @@
 const express = require("express");
 const cors = require("cors");
+const notFound = require("./middleware/notFound");
+const errorHandler = require("./middleware/errorHandler");
 
 const app = express();
 
@@ -12,14 +14,9 @@ app.use(require("./routes/patient.routes"));
 app.use(require("./routes/doctor.routes"));
 app.use(require("./routes/receptionist.routes"));
 
-app.use((req, res) => {
-  res.status(404).json({ message: "Không tìm thấy API", path: req.originalUrl });
-});
+app.use(notFound);
 
-app.use((err, req, res, next) => {
-  console.error("Lỗi server:", err);
-  res.status(500).json({ message: "Lỗi server", error: err.message });
-});
+app.use(errorHandler);
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {

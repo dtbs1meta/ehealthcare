@@ -3,7 +3,9 @@
   "version": "1.0.0",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "check": "node --check server.js",
+    "check:routes": "node --check routes/auth.routes.js && node --check routes/patient.routes.js && node --check routes/doctor.routes.js && node --check routes/receptionist.routes.js"
   },
   "dependencies": {
     "cors": "latest",

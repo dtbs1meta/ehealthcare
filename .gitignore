@@ -3,3 +3,5 @@ node_modules/
 .vscode/
 **/__pycache__/*
 .env
+static_docs/
+chroma_db/
