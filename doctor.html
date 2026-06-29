@@ -4,7 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>eHealthCare - Bác sĩ</title>
-    <script src="api-mock.js"></script>
     <style>
   @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;600;700&display=swap');
   :root {
@@ -418,11 +417,7 @@
           <div class="card-body">
             <div class="form-row">
               <div class="form-group2"><label>Tên thuốc</label><select id="dc-drug" onchange="autoFillDose()">
-                <option value="">-- Chọn thuốc --</option>
-                <option value="paracetamol" data-dose="10" data-unit="mg/kg">Paracetamol</option>
-                <option value="amoxicillin" data-dose="25" data-unit="mg/kg">Amoxicillin</option>
-                <option value="ibuprofen" data-dose="5" data-unit="mg/kg">Ibuprofen</option>
-                <option value="cefixime" data-dose="8" data-unit="mg/kg">Cefixime</option>
+                <option value="">Đang tải thuốc từ database...</option>
               </select></div>
               <div class="form-group2"><label>Liều chuẩn (mg/kg)</label><input type="number" id="dc-dose" placeholder="10"></div>
               <div class="form-group2"><label>Cân nặng BN (kg)</label><input type="number" id="dc-weight" placeholder="65"></div>
@@ -443,12 +438,8 @@
             <div class="table-scroll">
               <table class="rx-table">
                 <thead><tr><th>Thuốc</th><th>Liều chuẩn</th><th>Tần suất</th><th>Ghi chú</th></tr></thead>
-                <tbody>
-                  <tr><td>Paracetamol</td><td>10-15 mg/kg</td><td>3-4 lần/ngày</td><td>Tối đa 4g/ngày (ngườilớn)</td></tr>
-                  <tr><td>Amoxicillin</td><td>25-50 mg/kg</td><td>2-3 lần/ngày</td><td>Chia đều các lần</td></tr>
-                  <tr><td>Ibuprofen</td><td>5-10 mg/kg</td><td>3-4 lần/ngày</td><td>Uống sau ăn</td></tr>
-                  <tr><td>Cefixime</td><td>8 mg/kg</td><td>1-2 lần/ngày</td><td>Liều tối đa 400mg/ngày</td></tr>
-                  <tr><td>Metronidazole</td><td>7.5 mg/kg</td><td>3 lần/ngày</td><td>Liều tối đa 4g/ngày</td></tr>
+                <tbody id="doseRefBody">
+                  <tr><td colspan="4" style="text-align:center;color:var(--text-muted);">Đang tải danh sách thuốc từ database...</td></tr>
                 </tbody>
               </table>
             </div>
@@ -472,566 +463,747 @@
 <div class="toast-container" id="toastContainer"></div>
 
 <script>
-// ==================== DATA ====================
-const patients = [
-  { id:1, stt:'A001', name:'Nguyễn Văn An', yob:1985, gender:'Nam', phone:'0912345678', status:'serving', symptom:'Đau đầu, sốt 2 ngày', history:'Tăng huyết áp từ 2018', allergy:'Dị ứng Penicillin', weight:70, height:170 },
-  { id:2, stt:'A002', name:'Trần Thị Lan', yob:2018, gender:'Nữ', phone:'0987654321', status:'waiting', symptom:'Khó thở, ho', history:'Hen phế quản', allergy:'Không', weight:18, height:105 },
-  { id:3, stt:'A003', name:'Phạm Quang Hải', yob:1970, gender:'Nam', phone:'0977123456', status:'waiting', symptom:'Tăng huyết áp, đau ngực', history:'Tim mạch', allergy:'Không', weight:75, height:168 },
-  { id:4, stt:'A004', name:'Lê Thị Hoa', yob:1995, gender:'Nữ', phone:'0933111222', status:'waiting', symptom:'Nổi mẩn ngứa', history:'Dị ứng thờitiết', allergy:'Phấn hoa', weight:55, height:160 },
-  { id:5, stt:'A005', name:'Hoàng Minh', yob:1950, gender:'Nam', phone:'0966888999', status:'waiting', symptom:'Đau ngực trái', history:'Bệnh mạch vành', allergy:'Không', weight:68, height:165 }
-];
+// ==================== DATABASE CONFIG ====================
+const API_BASE = 'http://localhost:3000';
+const DEFAULT_DOCTOR_ID = 'BS001';
 
-const rxHistory = [
-  { id:1, date:'01/06/2026', patient:'Nguyễn Văn An', doctor:'BS. Nguyễn Hữu Long', drugs:[{name:'Paracetamol 500mg', dose:'1 viên', qty:20, usage:'Uống khi sốt >38.5°C'}], diagnosis:'Cảm cúm' },
-  { id:2, date:'28/05/2026', patient:'Trần Thị Lan', doctor:'BS. Nguyễn Hữu Long', drugs:[{name:'Salbutamol 2mg', dose:'1 viên', qty:30, usage:'Ngậm khi khó thở'},{name:'Cetirizine 10mg', dose:'nửa viên', qty:10, usage:'Tối'}], diagnosis:'Hen phế quản cấp' },
-  { id:3, date:'25/05/2026', patient:'Phạm Quang Hải', doctor:'BS. Lê Anh Tuấn', drugs:[{name:'Amlodipine 5mg', dose:'1 viên', qty:30, usage:'Sáng'},{name:'Aspirin 100mg', dose:'1 viên', qty:30, usage:'Sáng sau ăn'}], diagnosis:'Tăng huyết áp' }
-];
-
+let patients = [];
+let allPatients = [];
+let rxHistory = [];
 let currentPatient = null;
 let transferLog = [];
-let rxRows = 1;
+let medicines = [];
+let refreshTimer = null;
 
-// ==================== LOCALSTORAGE QUEUE SYNC ====================
-const QUEUE_KEY = 'SoThuTu';
-const EXAM_RESULT_KEY = 'ExamResults';
-let queueChannel = null;
-
-function readJSON(key, fallback) {
-  try {
-    const raw = localStorage.getItem(key);
-    if (!raw) return fallback;
-    const parsed = JSON.parse(raw);
-    return parsed ?? fallback;
-  } catch (err) {
-    console.warn('Không đọc được dữ liệu localStorage:', key, err);
-    return fallback;
-  }
+// ==================== HELPERS ====================
+function escapeHTML(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
 }
 
-function writeJSON(key, value) {
-  localStorage.setItem(key, JSON.stringify(value));
+function normalizeText(value) {
+  return String(value || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim();
 }
 
-function firstValue(obj, keys, fallback = '') {
-  if (!obj) return fallback;
-  for (const key of keys) {
-    const value = obj[key];
-    if (value !== undefined && value !== null && value !== '') return value;
-  }
-  return fallback;
+function calcAge(dateValue) {
+  if (!dateValue) return '';
+  const birth = new Date(dateValue);
+  if (Number.isNaN(birth.getTime())) return '';
+  const today = new Date();
+  let age = today.getFullYear() - birth.getFullYear();
+  const monthDiff = today.getMonth() - birth.getMonth();
+  if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birth.getDate())) age--;
+  return age;
 }
 
-function normalizeStatus(status) {
-  const s = String(status || '').trim().toUpperCase();
-  if (['CALLED', 'CALLING', 'SERVING', 'IN_PROGRESS', 'DANG_KHAM', 'ĐANG KHÁM'].includes(s)) return 'serving';
-  if (['DONE', 'COMPLETED', 'FINISHED', 'DA_KHAM', 'ĐÃ KHÁM', 'HOAN_TAT', 'HOÀN TẤT'].includes(s)) return 'done';
-  if (['SKIPPED', 'HOLD', 'PAUSED', 'BO_QUA', 'BỎ QUA'].includes(s)) return 'hold';
+function getBirthYear(dateValue) {
+  if (!dateValue) return '';
+  const birth = new Date(dateValue);
+  return Number.isNaN(birth.getTime()) ? '' : birth.getFullYear();
+}
+
+function normalizeStatus(row) {
+  const raw = String(row.TrangThaiThe || row.TrangThai || row.status || '').toUpperCase();
+  if (raw.includes('CALLED') || raw.includes('CALLING') || raw.includes('IN_PROGRESS') || raw.includes('ĐANG')) return 'serving';
+  if (raw.includes('DONE') || raw.includes('HOÀN') || raw.includes('DA KHAM') || raw.includes('ĐÃ KHÁM')) return 'done';
+  if (raw.includes('SKIPPED')) return 'skipped';
+  if (raw.includes('CANCELLED') || raw.includes('HUY') || raw.includes('HỦY')) return 'cancelled';
   return 'waiting';
 }
 
-function normalizeQueueItem(item, index) {
-  const source = item || {};
-  const patient = source.BenhNhan || source.patient || source.HoSo || {};
-  const full = Object.assign({}, patient, source);
-  const rawId = firstValue(full, ['id', 'MaBN', 'MaBenhNhan', 'MaNguoiDung', 'MaHS', 'MaSTT', 'queueId'], index + 1000);
-  const normalizedId = Number(String(rawId).replace(/\D/g, '')) || index + 1000;
-  const name = firstValue(full, ['name', 'HoTen', 'TenBenhNhan', 'tenBenhNhan', 'HoTenBN', 'patientName'], 'Bệnh nhân chưa rõ');
-  const year = firstValue(full, ['yob', 'NamSinh', 'namSinh', 'birthYear'], '');
-  const dob = firstValue(full, ['NgaySinh', 'ngaySinh', 'dob'], '');
-  const currentYear = new Date().getFullYear();
-  const parsedYear = Number(year) || (dob ? Number(String(dob).slice(0, 4)) : '');
-  const age = firstValue(full, ['Tuoi', 'tuoi', 'age'], '');
-  const estimatedYob = parsedYear || (age ? currentYear - Number(age) : 1990);
-
+function normalizePatient(row) {
+  const queueNumber = row.SoThuTu || row.STT || row.ThuTu || '';
   return {
-    id: normalizedId,
-    stt: String(firstValue(full, ['stt', 'STT', 'SoThuTu', 'ThuTu', 'queueNumber'], index + 1)).startsWith('A')
-      ? String(firstValue(full, ['stt', 'STT', 'SoThuTu', 'ThuTu', 'queueNumber'], index + 1))
-      : 'A' + String(firstValue(full, ['stt', 'STT', 'SoThuTu', 'ThuTu', 'queueNumber'], index + 1)).padStart(3, '0'),
-    name,
-    yob: estimatedYob,
-    gender: firstValue(full, ['gender', 'GioiTinh', 'gioiTinh', 'genderText'], 'Chưa rõ'),
-    phone: firstValue(full, ['phone', 'SDT', 'Sdt', 'DienThoai', 'SoDienThoai', 'soDienThoai'], ''),
-    status: normalizeStatus(firstValue(full, ['status', 'TrangThai', 'trangThai', 'TinhTrang'], 'waiting')),
-    symptom: firstValue(full, ['symptom', 'TrieuChung', 'trieuChung', 'LyDoKham', 'lyDoKham', 'GhiChu'], 'Chưa cập nhật triệu chứng'),
-    history: firstValue(full, ['history', 'TienSuBenh', 'tienSuBenh', 'TienSu', 'tienSu'], 'Chưa có tiền sử'),
-    allergy: firstValue(full, ['allergy', 'DiUng', 'diUng', 'TienSuDiUng', 'tienSuDiUng'], 'Không'),
-    weight: Number(firstValue(full, ['weight', 'CanNang', 'canNang'], 0)) || '',
-    height: Number(firstValue(full, ['height', 'ChieuCao', 'chieuCao'], 0)) || '',
-    bloodPressure: firstValue(full, ['HuyetAp', 'huyetAp', 'bloodPressure'], ''),
-    pulse: firstValue(full, ['Mach', 'mach', 'pulse'], ''),
-    temperature: firstValue(full, ['NhietDo', 'nhietDo', 'temperature'], ''),
-    breathing: firstValue(full, ['NhipTho', 'nhipTho', 'breathing'], '')
+    id: row.MaBN || row.id || row.ID,
+    MaBN: row.MaBN || row.id || row.ID,
+    MaHS: row.MaHS || row.maHS || null,
+    MaThe: row.MaThe || row.maThe || null,
+    stt: queueNumber ? `A${String(queueNumber).padStart(3, '0')}` : (row.stt || row.MaBN || ''),
+    queueNumber,
+    name: row.HoTen || row.TenBenhNhan || row.name || 'Chưa rõ tên',
+    yob: row.yob || getBirthYear(row.NgaySinh),
+    age: row.age || calcAge(row.NgaySinh),
+    gender: row.GioiTinh || row.gender || '',
+    phone: row.SDT || row.phone || '',
+    status: normalizeStatus(row),
+    symptom: row.TrieuChung || row.TrieuChungHienTai || row.LyDoKham || row.GhiChu || row.symptom || '',
+    history: row.TienSuBenh || row.history || '',
+    allergy: row.DiUng || row.allergy || 'Không',
+    underlying: row.BenhNen || row.underlying || '',
+    blood: [row.NhomMau, row.Rh].filter(Boolean).join('') || '',
+    priority: row.LoaiUuTien || row.priority || 'Bình thường',
+    weight: row.CanNang || row.weight || '',
+    height: row.ChieuCao || row.height || '',
+    raw: row
   };
 }
 
-function getQueueData() {
-  const raw = readJSON(QUEUE_KEY, []);
-  if (Array.isArray(raw)) return raw;
-  if (Array.isArray(raw.items)) return raw.items;
-  if (Array.isArray(raw.data)) return raw.data;
-  return [];
-}
-
-function loadCurrentPatientFromQueue(options = {}) {
-  const queue = getQueueData();
-  if (!queue.length) {
-    if (!options.silent) console.log('Không có dữ liệu hàng chờ trong localStorage.');
-    return null;
-  }
-
-  const normalized = queue.map(normalizeQueueItem);
-  patients.splice(0, patients.length, ...normalized);
-
-  const current = normalized.find(p => p.status === 'serving') || normalized.find(p => p.status === 'waiting');
-  if (current) {
-    console.log('Bệnh nhân hiện tại:', current);
-    const oldSelectedId = currentPatient?.id;
-    currentPatient = normalized.find(p => p.id === oldSelectedId) || currentPatient;
-  }
-
-  if (!options.skipRender) refreshDoctorUIFromQueue();
-  return current || null;
-}
-
-function savePatientsToQueue() {
-  const queue = patients.map((p, index) => ({
-    MaBN: p.id,
-    SoThuTu: Number(String(p.stt || index + 1).replace(/\D/g, '')) || index + 1,
-    HoTen: p.name,
-    NamSinh: p.yob,
-    GioiTinh: p.gender,
-    SDT: p.phone,
-    TrangThai: p.status === 'serving' ? 'CALLING' : p.status === 'done' ? 'DONE' : p.status === 'hold' ? 'SKIPPED' : 'WAITING',
-    TrieuChung: p.symptom,
-    TienSuBenh: p.history,
-    DiUng: p.allergy,
-    CanNang: p.weight,
-    ChieuCao: p.height,
-    HuyetAp: p.bloodPressure || ''
-  }));
-
-  writeJSON(QUEUE_KEY, queue);
-  localStorage.setItem('doctorQueueUpdatedAt', String(Date.now()));
-  if (queueChannel) queueChannel.postMessage({ type: 'QUEUE_UPDATED', source: 'doctor' });
-}
-
-function refreshDoctorUIFromQueue() {
-  updateDash();
-  renderBNList();
-  renderKBPatients();
-  renderHSList();
-  renderTransferLog();
-}
-
-function wireQueueSync() {
-  window.addEventListener('storage', (event) => {
-    if (!event.key || [QUEUE_KEY, 'doctorQueueUpdatedAt', 'receptionQueueUpdatedAt'].includes(event.key)) {
-      loadCurrentPatientFromQueue({ silent: true });
+async function fetchJson(path, options = {}) {
+  const res = await fetch(API_BASE + path, {
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...(options.headers || {})
     }
   });
 
-  if ('BroadcastChannel' in window) {
-    queueChannel = new BroadcastChannel('ehealthcare_queue');
-    queueChannel.onmessage = (event) => {
-      if (event.data?.type === 'QUEUE_UPDATED' && event.data?.source !== 'doctor') {
-        loadCurrentPatientFromQueue({ silent: true });
-      }
-    };
-  }
-}
-
-function getCurrentAllergies() {
-  if (!currentPatient) return [];
-  const text = String(currentPatient.allergy || '').toLowerCase();
-  if (!text || text === 'không' || text === 'khong') return [];
-  return text.split(/[,;\/\-]+/).map(x => x.trim()).filter(Boolean);
-}
-
-function checkDrugAllergy(input) {
-  const drugName = String(input?.value || '').toLowerCase();
-  const allergies = getCurrentAllergies();
-  if (!drugName || !allergies.length) return;
-
-  const matched = allergies.find(a => drugName.includes(a) || a.includes(drugName));
-  if (matched) {
-    input.style.borderColor = 'var(--error)';
-    showToast(`Cảnh báo: bệnh nhân có tiền sử dị ứng ${matched}!`, 'warning');
-  } else {
-    input.style.borderColor = '';
-  }
-}
-
-function saveExamResultForPatient(patient, drugs) {
-  const results = readJSON(EXAM_RESULT_KEY, []);
-  const result = {
-    id: Date.now(),
-    MaBN: patient.id,
-    HoTen: patient.name,
-    SDT: patient.phone,
-    NgayKham: new Date().toISOString(),
-    BacSi: 'BS. Nguyễn Hữu Long',
-    Mach: document.getElementById('kb-mach').value,
-    NhietDo: document.getElementById('kb-nhietdo').value,
-    HuyetAp: document.getElementById('kb-huyetap').value,
-    NhipTho: document.getElementById('kb-nhiptho').value,
-    CanNang: document.getElementById('kb-cannang').value,
-    ChieuCao: document.getElementById('kb-chieucao').value,
-    LyDoKham: document.getElementById('kb-lydo').value,
-    TomTatBenhAn: document.getElementById('kb-tomtat').value,
-    ChanDoan: document.getElementById('cd-icd').value || document.getElementById('cd-chitiet').value,
-    ChanDoanChiTiet: document.getElementById('cd-chitiet').value,
-    HuongDieuTri: document.getElementById('cd-huong').value,
-    LoiKhuyen: document.getElementById('cd-loikhuyen').value,
-    NgayTaiKham: document.getElementById('cd-taikham').value,
-    DonThuoc: drugs
-  };
-
-  results.unshift(result);
-  writeJSON(EXAM_RESULT_KEY, results);
-
-  if (typeof API !== 'undefined' && API && typeof API.post === 'function') {
-    API.post('/api/ket-qua-kham', result).catch(() => {});
+  if (!res.ok) {
+    let message = `HTTP ${res.status}`;
+    try {
+      const data = await res.json();
+      message = data.message || data.error || message;
+    } catch (_) {
+      message = await res.text();
+    }
+    throw new Error(message);
   }
 
-  if (typeof saveExamResult === 'function') {
-    try { saveExamResult(result); } catch (err) { console.warn('saveExamResult mock lỗi:', err); }
-  }
-
-  return result;
+  return res.json();
 }
 
+function getEl(id) {
+  return document.getElementById(id);
+}
+
+function safeSetText(id, value) {
+  const el = getEl(id);
+  if (el) el.textContent = value ?? '';
+}
 
 // ==================== INIT ====================
-document.addEventListener('DOMContentLoaded', () => {
-  loadCurrentPatientFromQueue({ silent: true });
-  wireQueueSync();
-  updateDash(); renderBNList(); renderKBPatients(); renderRxHistory(); renderHSList(); renderTransferLog();
-  document.getElementById('cd-taikham').value = new Date(Date.now()+14*864e5).toISOString().split('T')[0];
+document.addEventListener('DOMContentLoaded', async () => {
+  getEl('cd-taikham').value = new Date(Date.now() + 14 * 864e5).toISOString().split('T')[0];
   addRxRow();
+  await loadInitialData();
+  refreshTimer = setInterval(loadDoctorQueue, 15000);
 });
+
+window.addEventListener('beforeunload', () => {
+  if (refreshTimer) clearInterval(refreshTimer);
+});
+
+async function loadInitialData() {
+  await Promise.allSettled([
+    loadDoctorQueue(),
+    loadAllPatients(),
+    loadMedicines()
+  ]);
+  renderRxHistory();
+}
+
+// ==================== DATABASE LOADERS ====================
+async function loadDoctorQueue() {
+  try {
+    const rows = await fetchJson('/api/doctor/queue');
+    patients = rows.map(normalizePatient);
+    updateDash();
+    renderBNList();
+    renderKBPatients();
+    renderTransferLog();
+  } catch (err) {
+    console.error(err);
+    showToast('Không tải được hàng chờ từ database: ' + err.message, 'error');
+  }
+}
+
+async function loadAllPatients() {
+  try {
+    const rows = await fetchJson('/api/benhnhan');
+    allPatients = rows.map(normalizePatient);
+    renderHSList();
+  } catch (err) {
+    console.warn('Không tải được toàn bộ bệnh nhân:', err.message);
+    allPatients = [...patients];
+    renderHSList();
+  }
+}
+
+async function loadMedicines() {
+  try {
+    medicines = await fetchJson('/api/thuoc');
+    ensureMedicineDatalist();
+    renderDoseCalculator();
+  } catch (err) {
+    console.warn('Không tải được danh sách thuốc:', err.message);
+    medicines = [];
+    ensureMedicineDatalist();
+    renderDoseCalculator();
+  }
+}
+
+function ensureMedicineDatalist() {
+  let datalist = getEl('medicineOptions');
+  if (!datalist) {
+    datalist = document.createElement('datalist');
+    datalist.id = 'medicineOptions';
+    document.body.appendChild(datalist);
+  }
+
+  datalist.innerHTML = medicines.map(m => `<option value="${escapeHTML(m.TenThuoc)}"></option>`).join('');
+}
+
+function getDoseMeta(medicine) {
+  const name = normalizeText(medicine?.TenThuoc || '');
+  const description = String(medicine?.MoTa || '');
+  const text = normalizeText(`${medicine?.TenThuoc || ''} ${description}`);
+
+  const defaults = [
+    { keys: ['paracetamol', 'acetaminophen'], dose: 12.5, doseText: '10-15 mg/kg', frequency: '3-4 lần/ngày', note: 'Tính theo cân nặng; không vượt liều tối đa/ngày.' },
+    { keys: ['amoxicillin'], dose: 25, doseText: '25-50 mg/kg', frequency: '2-3 lần/ngày', note: 'Chia đều các lần dùng trong ngày.' },
+    { keys: ['ibuprofen'], dose: 7.5, doseText: '5-10 mg/kg', frequency: '3-4 lần/ngày', note: 'Uống sau ăn.' },
+    { keys: ['cefixime'], dose: 8, doseText: '8 mg/kg', frequency: '1-2 lần/ngày', note: 'Tham khảo liều tối đa theo hướng dẫn thuốc.' },
+    { keys: ['metronidazole'], dose: 7.5, doseText: '7.5 mg/kg', frequency: '3 lần/ngày', note: 'Chia đều các lần dùng trong ngày.' },
+    { keys: ['cephalexin', 'cefalexin'], dose: 25, doseText: '25-50 mg/kg', frequency: '2-4 lần/ngày', note: 'Tham khảo theo chẩn đoán và mức độ nhiễm khuẩn.' },
+    { keys: ['azithromycin'], dose: 10, doseText: '10 mg/kg', frequency: '1 lần/ngày', note: 'Thường dùng ngắn ngày theo chỉ định.' },
+    { keys: ['cetirizine'], dose: 0.25, doseText: '0.25 mg/kg', frequency: '1 lần/ngày', note: 'Thuốc kháng dị ứng; cân nhắc tuổi bệnh nhân.' },
+    { keys: ['loratadine'], dose: 0.2, doseText: '0.2 mg/kg', frequency: '1 lần/ngày', note: 'Thuốc kháng dị ứng; cân nhắc tuổi bệnh nhân.' }
+  ];
+
+  const found = defaults.find(item => item.keys.some(key => text.includes(key)));
+  if (found) return found;
+
+  const match = description.match(/(\d+(?:[.,]\d+)?)\s*(?:-\s*(\d+(?:[.,]\d+)?))?\s*mg\s*\/\s*kg/i);
+  if (match) {
+    const min = parseFloat(match[1].replace(',', '.'));
+    const max = match[2] ? parseFloat(match[2].replace(',', '.')) : min;
+    const avg = (min + max) / 2;
+    return {
+      dose: avg,
+      doseText: match[2] ? `${min}-${max} mg/kg` : `${min} mg/kg`,
+      frequency: 'Theo chỉ định',
+      note: description || 'Lấy từ mô tả thuốc trong database.'
+    };
+  }
+
+  return {
+    dose: '',
+    doseText: 'Chưa có dữ liệu mg/kg',
+    frequency: 'Theo chỉ định',
+    note: medicine?.MoTa || medicine?.DonViTinh || 'Database hiện chưa có cột liều chuẩn.'
+  };
+}
+
+function renderDoseCalculator() {
+  const drugSelect = getEl('dc-drug');
+  const doseBody = getEl('doseRefBody');
+
+  if (drugSelect) {
+    if (!medicines.length) {
+      drugSelect.innerHTML = '<option value="">Không có thuốc</option>';
+    } else {
+      drugSelect.innerHTML = '<option value="">-- Chọn thuốc --</option>' + medicines.map(m => {
+        const meta = getDoseMeta(m);
+        return `<option value="${escapeHTML(m.MaThuoc || m.TenThuoc)}" data-dose="${escapeHTML(meta.dose)}" data-name="${escapeHTML(m.TenThuoc)}" data-unit="${escapeHTML(m.DonViTinh || '')}" data-note="${escapeHTML(meta.note)}">${escapeHTML(m.TenThuoc)}${m.DonViTinh ? ' - ' + escapeHTML(m.DonViTinh) : ''}</option>`;
+      }).join('');
+    }
+  }
+
+  if (doseBody) {
+    if (!medicines.length) {
+      doseBody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--text-muted);">Chưa có dữ liệu thuốc từ database</td></tr>';
+    } else {
+      doseBody.innerHTML = medicines.map(m => {
+        const meta = getDoseMeta(m);
+        return `<tr><td>${escapeHTML(m.TenThuoc)}</td><td>${escapeHTML(meta.doseText)}</td><td>${escapeHTML(meta.frequency)}</td><td>${escapeHTML(meta.note)}</td></tr>`;
+      }).join('');
+    }
+  }
+}
 
 // ==================== NAV ====================
 function showPage(pageId, btn) {
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
-  document.getElementById('page-' + pageId).classList.add('active');
-  if (btn) { document.querySelectorAll('.sidebar-link').forEach(b => b.classList.remove('active')); btn.classList.add('active'); }
+  getEl('page-' + pageId)?.classList.add('active');
+  if (btn) {
+    document.querySelectorAll('.sidebar-link').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+  }
 }
 
 function switchTab(btn, tabId) {
   btn.closest('.tabs').querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
   btn.classList.add('active');
   document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-  document.getElementById(tabId).classList.add('active');
+  getEl(tabId).classList.add('active');
 }
 
 // ==================== DASHBOARD ====================
 function updateDash() {
-  document.getElementById('dash-wait').textContent = patients.filter(p => p.status==='waiting').length;
-  document.getElementById('dash-done').textContent = patients.filter(p => p.status==='done').length;
-  document.getElementById('dash-serving').textContent = patients.filter(p => p.status==='serving').length;
-  document.getElementById('dash-rx').textContent = rxHistory.length;
-  document.getElementById('bnCount').textContent = patients.filter(p => p.status==='waiting').length;
+  const waiting = patients.filter(p => p.status === 'waiting').length;
+  const serving = patients.filter(p => p.status === 'serving').length;
+  safeSetText('dash-wait', waiting);
+  safeSetText('dash-serving', serving);
+  safeSetText('dash-done', patients.filter(p => p.status === 'done').length);
+  safeSetText('dash-rx', rxHistory.length);
+  safeSetText('bnCount', waiting);
 
-  const c = document.getElementById('dashQueue');
-  const waiting = patients.filter(p => p.status === 'waiting' || p.status === 'serving');
-  c.innerHTML = waiting.map(p => `
-    <div class="patient-queue-item ${p.status==='serving'?'active':''}" onclick="selectPatient(${p.id})">
-      <div class="pq-num">${p.stt.replace('A','')}</div>
-      <div class="pq-info"><div class="pq-name">${p.name}</div><div class="pq-meta">${p.yob} · ${p.symptom}</div></div>
-      <span class="pq-badge ${p.status}">${p.status==='serving'?'Đang khám':'Chờ'}</span>
-    </div>`).join('');
+  const c = getEl('dashQueue');
+  if (!c) return;
+  const queue = patients.filter(p => p.status === 'waiting' || p.status === 'serving');
+  c.innerHTML = queue.length ? queue.map(p => `
+    <div class="patient-queue-item ${p.status === 'serving' ? 'active' : ''}" onclick="selectPatient('${escapeHTML(p.MaBN)}')">
+      <div class="pq-num">${escapeHTML(p.queueNumber || p.stt.replace('A', ''))}</div>
+      <div class="pq-info"><div class="pq-name">${escapeHTML(p.name)}</div><div class="pq-meta">${escapeHTML(p.yob || '')} · ${escapeHTML(p.symptom || p.priority)}</div></div>
+      <span class="pq-badge ${p.status}">${p.status === 'serving' ? 'Đang khám' : 'Chờ'}</span>
+    </div>`).join('') : '<div class="empty-state">Không có bệnh nhân trong hàng chờ</div>';
 }
 
-function nextBN() {
-  loadCurrentPatientFromQueue({ silent: true, skipRender: true });
-  const next = patients.find(p => p.status === 'waiting');
-  if (!next) { showToast('Không có bệnh nhân chờ!','warning'); return; }
-  patients.forEach(p => { if(p.status==='serving') p.status='done'; });
-  next.status = 'serving';
-  currentPatient = next;
-  savePatientsToQueue();
-  showToast(`Gọi bệnh nhân ${next.name} - ${next.stt}`,'success');
-  updateDash(); renderBNList(); renderKBPatients();
-  selectPatient(next.id);
+async function nextBN() {
+  try {
+    const data = await fetchJson('/api/doctor/next', { method: 'PUT', body: JSON.stringify({}) });
+    showToast(data.message || 'Đã gọi bệnh nhân tiếp theo', 'success');
+    await loadDoctorQueue();
+    const maBN = data.patient?.MaBN;
+    if (maBN) await selectPatient(maBN);
+  } catch (err) {
+    showToast(err.message || 'Không gọi được bệnh nhân tiếp theo', 'warning');
+  }
 }
 
 // ==================== BN LIST ====================
 function renderBNList() {
-  const search = document.getElementById('bnSearch').value.toLowerCase();
-  const filter = document.getElementById('bnStatusFilter').value;
-  let data = patients;
+  const search = normalizeText(getEl('bnSearch')?.value || '');
+  const filter = getEl('bnStatusFilter')?.value || 'all';
+  let data = [...patients];
+
   if (filter !== 'all') data = data.filter(p => p.status === filter);
-  if (search) data = data.filter(p => p.name.toLowerCase().includes(search) || p.stt.toLowerCase().includes(search) || p.symptom.toLowerCase().includes(search));
-
-  document.getElementById('bnList').innerHTML = data.map(p => `
-    <div class="patient-queue-item ${p.status==='serving'?'active':''}" onclick="selectPatient(${p.id})" style="cursor:pointer;">
-      <div class="pq-num">${p.stt.replace('A','')}</div>
-      <div class="pq-info"><div class="pq-name">${p.name} <span style="font-weight:400;color:var(--text-muted);">(${new Date().getFullYear()-p.yob}t)</span></div><div class="pq-meta">${p.phone} · ${p.symptom}</div></div>
-      <span class="pq-badge ${p.status}">${p.status==='waiting'?'Chờ khám':p.status==='serving'?'Đang khám':'Hoàn tất'}</span>
-    </div>`).join('');
-}
-
-// ==================== KB ====================
-function renderKBPatients() {
-  const c = document.getElementById('kbPatientList');
-  const data = patients.filter(p => p.status === 'waiting' || p.status === 'serving');
-  c.innerHTML = data.map(p => `
-    <div class="patient-queue-item ${currentPatient&&currentPatient.id===p.id?'active':''}" onclick="selectPatient(${p.id})">
-      <div class="pq-num">${p.stt.replace('A','')}</div>
-      <div class="pq-info"><div class="pq-name">${p.name}</div><div class="pq-meta">${p.symptom}</div></div>
-    </div>`).join('');
-}
-
-function selectPatient(id) {
-  currentPatient = patients.find(p => String(p.id) === String(id));
-  if (!currentPatient) return;
-
-  if (currentPatient.status === 'waiting') {
-    currentPatient.status = 'serving';
-    savePatientsToQueue();
+  if (search) {
+    data = data.filter(p =>
+      normalizeText(p.name).includes(search) ||
+      normalizeText(p.stt).includes(search) ||
+      normalizeText(p.phone).includes(search) ||
+      normalizeText(p.symptom).includes(search)
+    );
   }
 
-  document.getElementById('kb-patientName').innerHTML = `${currentPatient.name} <span style="font-weight:400;font-size:13px;color:var(--text-sub);">(${new Date().getFullYear()-currentPatient.yob}t - ${currentPatient.gender})</span>`;
-  document.getElementById('kb-cannang').value = currentPatient.weight || '';
-  document.getElementById('kb-chieucao').value = currentPatient.height || '';
-  document.getElementById('kb-huyetap').value = currentPatient.bloodPressure || '';
-  document.getElementById('kb-mach').value = currentPatient.pulse || '';
-  document.getElementById('kb-nhietdo').value = currentPatient.temperature || '';
-  document.getElementById('kb-nhiptho').value = currentPatient.breathing || '';
-  document.getElementById('kb-lydo').value = currentPatient.symptom || '';
-  document.getElementById('kb-tomtat').value = `Tiền sử: ${currentPatient.history || 'Chưa có'}\nDị ứng: ${currentPatient.allergy || 'Không'}`;
+  const list = getEl('bnList');
+  if (!list) return;
+  list.innerHTML = data.length ? data.map(p => `
+    <div class="patient-queue-item ${p.status === 'serving' ? 'active' : ''}" onclick="selectPatient('${escapeHTML(p.MaBN)}')" style="cursor:pointer;">
+      <div class="pq-num">${escapeHTML(p.queueNumber || p.stt.replace('A', ''))}</div>
+      <div class="pq-info"><div class="pq-name">${escapeHTML(p.name)} <span style="font-weight:400;color:var(--text-muted);">(${escapeHTML(p.age || '')}t)</span></div><div class="pq-meta">${escapeHTML(p.phone)} · ${escapeHTML(p.symptom || p.priority)}</div></div>
+      <span class="pq-badge ${p.status}">${p.status === 'waiting' ? 'Chờ khám' : p.status === 'serving' ? 'Đang khám' : 'Hoàn tất'}</span>
+    </div>`).join('') : '<div class="empty-state">Không có bệnh nhân phù hợp</div>';
+}
 
-  renderKBPatients();
-  updateDash();
-  showPage('khambenh', document.querySelectorAll('.sidebar-link')[2]);
+// ==================== KHÁM BỆNH ====================
+function renderKBPatients() {
+  const c = getEl('kbPatientList');
+  if (!c) return;
+  const data = patients.filter(p => p.status === 'waiting' || p.status === 'serving');
+  c.innerHTML = data.length ? data.map(p => `
+    <div class="patient-queue-item ${currentPatient && currentPatient.MaBN === p.MaBN ? 'active' : ''}" onclick="selectPatient('${escapeHTML(p.MaBN)}')">
+      <div class="pq-num">${escapeHTML(p.queueNumber || p.stt.replace('A', ''))}</div>
+      <div class="pq-info"><div class="pq-name">${escapeHTML(p.name)}</div><div class="pq-meta">${escapeHTML(p.symptom || p.priority)}</div></div>
+    </div>`).join('') : '<div class="empty-state">Không có bệnh nhân chờ khám</div>';
+}
+
+async function selectPatient(maBN) {
+  try {
+    let detail;
+    try {
+      detail = await fetchJson('/api/doctor/patient/' + encodeURIComponent(maBN));
+    } catch (_) {
+      detail = patients.find(p => p.MaBN === maBN)?.raw || allPatients.find(p => p.MaBN === maBN)?.raw;
+    }
+
+    if (!detail) {
+      showToast('Không tìm thấy thông tin bệnh nhân', 'error');
+      return;
+    }
+
+    const fromQueue = patients.find(p => p.MaBN === maBN) || {};
+    currentPatient = { ...fromQueue, ...normalizePatient({ ...fromQueue.raw, ...detail, TrangThaiThe: fromQueue.raw?.TrangThaiThe || detail.TrangThaiThe }) };
+
+    getEl('kb-patientName').innerHTML = `${escapeHTML(currentPatient.name)} <span style="font-weight:400;font-size:13px;color:var(--text-sub);">(${escapeHTML(currentPatient.age || '')}t - ${escapeHTML(currentPatient.gender)})</span>`;
+    getEl('kb-cannang').value = currentPatient.weight || '';
+    getEl('kb-chieucao').value = currentPatient.height || '';
+    getEl('kb-lydo').value = currentPatient.symptom || '';
+    getEl('kb-tomtat').value = [
+      currentPatient.history ? `Tiền sử: ${currentPatient.history}` : '',
+      currentPatient.underlying ? `Bệnh nền: ${currentPatient.underlying}` : '',
+      currentPatient.allergy ? `Dị ứng: ${currentPatient.allergy}` : ''
+    ].filter(Boolean).join('\n');
+
+    renderKBPatients();
+    showPage('khambenh', document.querySelectorAll('.sidebar-link')[2]);
+  } catch (err) {
+    showToast('Lỗi chọn bệnh nhân: ' + err.message, 'error');
+  }
 }
 
 function addRxRow() {
-  const tbody = document.getElementById('rxBody');
+  const tbody = getEl('rxBody');
+  if (!tbody) return;
   const tr = document.createElement('tr');
-  tr.innerHTML = `<td><input type="text" placeholder="Tên thuốc" class="rx-name"></td>
+  tr.innerHTML = `<td><input type="text" placeholder="Tên thuốc" class="rx-name" list="medicineOptions" oninput="checkDrugAllergy(this)"></td>
     <td><input type="text" placeholder="1 viên" class="rx-dose" style="width:80px;"></td>
     <td><input type="text" placeholder="viên" class="rx-unit" style="width:60px;"></td>
-    <td><input type="number" placeholder="10" class="rx-qty" style="width:60px;"></td>
+    <td><input type="number" placeholder="10" class="rx-qty" style="width:60px;" min="1"></td>
     <td><input type="text" placeholder="Ngày 2 lần" class="rx-usage"></td>
     <td><button class="btn btn-danger btn-sm" onclick="this.closest('tr').remove()">✕</button></td>`;
   tbody.appendChild(tr);
-  const drugInput = tr.querySelector('.rx-name');
-  drugInput.addEventListener('input', () => checkDrugAllergy(drugInput));
-  drugInput.addEventListener('blur', () => checkDrugAllergy(drugInput));
 }
 
-function saveKB() {
-  if (!currentPatient) { showToast('Vui lòng chọn bệnh nhân!','error'); return; }
+function findMedicineByName(name) {
+  const q = normalizeText(name);
+  if (!q) return null;
+  return medicines.find(m => normalizeText(m.TenThuoc) === q)
+      || medicines.find(m => normalizeText(m.TenThuoc).includes(q) || q.includes(normalizeText(m.TenThuoc)));
+}
 
-  const drugs = [];
-  document.querySelectorAll('#rxBody tr').forEach(tr => {
-    const name = tr.querySelector('.rx-name')?.value?.trim();
-    if (name) {
-      drugs.push({
-        name,
-        dose: tr.querySelector('.rx-dose')?.value||'',
-        unit: tr.querySelector('.rx-unit')?.value||'',
-        qty: tr.querySelector('.rx-qty')?.value||0,
-        usage: tr.querySelector('.rx-usage')?.value||''
-      });
-    }
+function checkDrugAllergy(input) {
+  if (!currentPatient || !input.value.trim()) return;
+  const allergy = normalizeText(currentPatient.allergy);
+  if (!allergy || allergy === 'khong' || allergy === 'khong co') return;
+
+  const drugName = normalizeText(input.value);
+  const med = findMedicineByName(input.value);
+  const medText = normalizeText([input.value, med?.TenThuoc, med?.MoTa].filter(Boolean).join(' '));
+
+  const allergyMap = {
+    penicillin: ['penicillin', 'amoxicillin', 'ampicillin', 'augmentin'],
+    aspirin: ['aspirin'],
+    ibuprofen: ['ibuprofen'],
+    paracetamol: ['paracetamol', 'acetaminophen'],
+    cephalosporin: ['cefixime', 'cephalexin', 'cefuroxime']
+  };
+
+  let risk = medText.includes(allergy) || allergy.includes(drugName);
+  Object.entries(allergyMap).forEach(([key, values]) => {
+    if (allergy.includes(key) && values.some(v => medText.includes(v))) risk = true;
   });
 
-  if (!document.getElementById('cd-icd').value && !document.getElementById('cd-chitiet').value) {
-    showToast('Vui lòng nhập chuẩn đoán trước khi lưu!','warning');
+  if (risk) {
+    showToast(`Cảnh báo dị ứng: bệnh nhân có tiền sử ${currentPatient.allergy}`, 'warning');
+    input.style.borderColor = 'var(--warning)';
+  } else {
+    input.style.borderColor = '';
+  }
+}
+
+function collectPrescription() {
+  const prescription = [];
+  const invalid = [];
+
+  document.querySelectorAll('#rxBody tr').forEach(tr => {
+    const name = tr.querySelector('.rx-name')?.value.trim();
+    if (!name) return;
+
+    const med = findMedicineByName(name);
+    if (!med && medicines.length) {
+      invalid.push(name);
+      return;
+    }
+
+    prescription.push({
+      MaThuoc: med?.MaThuoc || name,
+      TenThuoc: med?.TenThuoc || name,
+      SoLuong: Number(tr.querySelector('.rx-qty')?.value || 1),
+      LieuLuong: tr.querySelector('.rx-dose')?.value || '',
+      CachDung: tr.querySelector('.rx-usage')?.value || '',
+      ThoiGianDung: tr.querySelector('.rx-unit')?.value || ''
+    });
+  });
+
+  return { prescription, invalid };
+}
+
+function buildExamSummary() {
+  return [
+    getEl('kb-mach').value ? `Mạch: ${getEl('kb-mach').value} lần/phút` : '',
+    getEl('kb-nhietdo').value ? `Nhiệt độ: ${getEl('kb-nhietdo').value}°C` : '',
+    getEl('kb-huyetap').value ? `Huyết áp: ${getEl('kb-huyetap').value}` : '',
+    getEl('kb-nhiptho').value ? `Nhịp thở: ${getEl('kb-nhiptho').value} lần/phút` : '',
+    getEl('kb-tomtat').value ? `Tóm tắt: ${getEl('kb-tomtat').value}` : '',
+    getEl('cd-huong').value ? `Hướng điều trị: ${getEl('cd-huong').value}` : '',
+    getEl('cd-loikhuyen').value ? `Lời khuyên: ${getEl('cd-loikhuyen').value}` : ''
+  ].filter(Boolean).join('\n');
+}
+
+async function saveKB() {
+  if (!currentPatient) {
+    showToast('Vui lòng chọn bệnh nhân!', 'error');
     return;
   }
 
-  const result = saveExamResultForPatient(currentPatient, drugs);
-
-  if (drugs.length) {
-    rxHistory.unshift({ id: result.id, date: new Date().toLocaleDateString('vi-VN'), patient: currentPatient.name,
-      doctor: 'BS. Nguyễn Hữu Long', drugs, diagnosis: result.ChanDoan || '' });
+  const diagnosis = getEl('cd-icd').value.trim() || getEl('cd-chitiet').value.trim();
+  if (!diagnosis) {
+    showToast('Vui lòng nhập chuẩn đoán trước khi lưu!', 'error');
+    return;
   }
 
-  currentPatient.status = 'done';
-  savePatientsToQueue();
+  if (!currentPatient.MaHS) {
+    showToast('Bệnh nhân chưa có mã hồ sơ y tế MaHS, không thể lưu phiếu khám!', 'error');
+    return;
+  }
 
-  document.getElementById('kb-success').style.display = 'flex';
-  showToast('Đã lưu hồ sơ khám và kê đơn thành công!','success');
-  setTimeout(() => { document.getElementById('kb-success').style.display = 'none'; resetKB(); }, 2000);
-  updateDash(); renderBNList(); renderKBPatients(); renderRxHistory(); renderHSList();
+  const { prescription, invalid } = collectPrescription();
+  if (invalid.length) {
+    showToast('Thuốc chưa có trong database: ' + invalid.join(', '), 'error');
+    return;
+  }
+
+  try {
+    const payload = {
+      MaBN: currentPatient.MaBN,
+      MaHS: currentPatient.MaHS,
+      MaBS: DEFAULT_DOCTOR_ID,
+      TrieuChung: getEl('kb-lydo').value || currentPatient.symptom || '',
+      KetQuaThamKham: buildExamSummary(),
+      ChuanDoan: diagnosis,
+      ChiPhi: 200000,
+      prescription
+    };
+
+    const result = await fetchJson('/api/doctor/exam', {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    });
+
+    if (prescription.length) {
+      rxHistory.unshift({
+        id: result.MaPK || Date.now(),
+        date: new Date().toLocaleDateString('vi-VN'),
+        patient: currentPatient.name,
+        doctor: 'BS. Nguyễn Hữu Long',
+        drugs: prescription.map(p => ({ name: p.TenThuoc, dose: p.LieuLuong, qty: p.SoLuong, usage: p.CachDung })),
+        diagnosis
+      });
+    }
+
+    getEl('kb-success').style.display = 'flex';
+    showToast(result.message || 'Đã lưu hồ sơ khám vào database!', 'success');
+    await loadDoctorQueue();
+    renderRxHistory();
+    setTimeout(() => {
+      getEl('kb-success').style.display = 'none';
+      resetKB();
+    }, 1600);
+  } catch (err) {
+    showToast('Lỗi lưu phiếu khám: ' + err.message, 'error');
+  }
 }
 
 function resetKB() {
-  document.getElementById('kb-mach').value = ''; document.getElementById('kb-nhietdo').value = '';
-  document.getElementById('kb-huyetap').value = ''; document.getElementById('kb-nhiptho').value = '';
-  document.getElementById('kb-lydo').value = ''; document.getElementById('kb-tomtat').value = '';
-  document.getElementById('cd-icd').value = ''; document.getElementById('cd-chitiet').value = '';
-  document.getElementById('cd-huong').value = ''; document.getElementById('cd-loikhuyen').value = '';
-  document.getElementById('rxBody').innerHTML = ''; addRxRow();
+  ['kb-mach','kb-nhietdo','kb-huyetap','kb-nhiptho','kb-cannang','kb-chieucao','kb-lydo','kb-tomtat','cd-icd','cd-chitiet','cd-huong','cd-loikhuyen'].forEach(id => {
+    const el = getEl(id);
+    if (el) el.value = '';
+  });
+  getEl('rxBody').innerHTML = '';
+  addRxRow();
   currentPatient = null;
-  document.getElementById('kb-patientName').textContent = 'Vui lòng chọn bệnh nhân';
+  getEl('kb-patientName').textContent = 'Vui lòng chọn bệnh nhân';
   renderKBPatients();
 }
 
 // ==================== PRINT ====================
 function printRx() {
-  if (!currentPatient) { showToast('Vui lòng chọn bệnh nhân!','error'); return; }
-  document.getElementById('print-room').textContent = 'P101 - Nội tổng quát';
-  document.getElementById('print-name').textContent = currentPatient.name;
-  document.getElementById('print-age').textContent = new Date().getFullYear() - currentPatient.yob;
-  document.getElementById('print-icd').textContent = document.getElementById('cd-icd').value || document.getElementById('cd-chitiet').value || '---';
-  document.getElementById('print-advice').textContent = document.getElementById('cd-loikhuyen').value || '---';
-  document.getElementById('print-date').textContent = new Date().toLocaleDateString('vi-VN');
+  if (!currentPatient) {
+    showToast('Vui lòng chọn bệnh nhân!', 'error');
+    return;
+  }
+
+  safeSetText('print-room', 'P101 - Nội tổng quát');
+  safeSetText('print-name', currentPatient.name);
+  safeSetText('print-age', currentPatient.age || '');
+  safeSetText('print-icd', getEl('cd-icd').value || getEl('cd-chitiet').value || '---');
+  safeSetText('print-advice', getEl('cd-loikhuyen').value || '---');
+  safeSetText('print-date', new Date().toLocaleDateString('vi-VN'));
 
   let rxHtml = '<ol style="font-size:13px;line-height:2;">';
   document.querySelectorAll('#rxBody tr').forEach(tr => {
     const name = tr.querySelector('.rx-name')?.value;
-    if (name) rxHtml += `<li><strong>${name}</strong> - ${tr.querySelector('.rx-dose')?.value||''} x ${tr.querySelector('.rx-qty')?.value||0} ${tr.querySelector('.rx-unit')?.value||''} (${tr.querySelector('.rx-usage')?.value||''})</li>`;
+    if (name) {
+      rxHtml += `<li><strong>${escapeHTML(name)}</strong> - ${escapeHTML(tr.querySelector('.rx-dose')?.value || '')} x ${escapeHTML(tr.querySelector('.rx-qty')?.value || 0)} ${escapeHTML(tr.querySelector('.rx-unit')?.value || '')} (${escapeHTML(tr.querySelector('.rx-usage')?.value || '')})</li>`;
+    }
   });
   rxHtml += '</ol>';
-  document.getElementById('print-rxlist').innerHTML = rxHtml;
+  getEl('print-rxlist').innerHTML = rxHtml;
 
-  document.getElementById('printArea').style.display = 'block';
+  getEl('printArea').style.display = 'block';
   window.print();
-  document.getElementById('printArea').style.display = 'none';
+  getEl('printArea').style.display = 'none';
 }
 
 // ==================== RX HISTORY ====================
 function renderRxHistory() {
-  const search = document.getElementById('rxSearch').value.toLowerCase();
-  const filter = document.getElementById('rxFilter').value;
-  let data = rxHistory;
-  if (filter === 'today') data = data.filter(r => r.date === new Date().toLocaleDateString('vi-VN'));
-  if (search) data = data.filter(r => r.patient.toLowerCase().includes(search) || r.drugs.some(d => d.name.toLowerCase().includes(search)));
+  const search = normalizeText(getEl('rxSearch')?.value || '');
+  const filter = getEl('rxFilter')?.value || 'all';
+  let data = [...rxHistory];
 
-  document.getElementById('rxHistoryList').innerHTML = data.map(r => `
+  if (filter === 'today') data = data.filter(r => r.date === new Date().toLocaleDateString('vi-VN'));
+  if (search) data = data.filter(r => normalizeText(r.patient).includes(search) || r.drugs.some(d => normalizeText(d.name).includes(search)));
+
+  const list = getEl('rxHistoryList');
+  if (!list) return;
+  list.innerHTML = data.length ? data.map(r => `
     <div class="card" style="margin-bottom:10px;">
       <div class="card-header" style="padding:12px 16px;">
-        <div><div style="font-weight:600;font-size:14px;">${r.patient}</div><div style="font-size:12px;color:var(--text-sub);">${r.date} · ${r.doctor}</div></div>
-        <span class="pq-badge serving">${r.diagnosis || 'Đã kê đơn'}</span>
+        <div><div style="font-weight:600;font-size:14px;">${escapeHTML(r.patient)}</div><div style="font-size:12px;color:var(--text-sub);">${escapeHTML(r.date)} · ${escapeHTML(r.doctor)}</div></div>
+        <span class="pq-badge serving">${escapeHTML(r.diagnosis || 'Đã kê đơn')}</span>
       </div>
       <div class="card-body" style="padding:12px 16px;">
         <div style="font-size:12px;font-weight:600;color:var(--text-sub);margin-bottom:8px;">Đơn thuốc:</div>
-        ${r.drugs.map(d => `<div style="font-size:13px;padding:4px 0;border-bottom:1px solid var(--border);"><strong>${d.name}</strong> - ${d.dose} x ${d.qty} (${d.usage})</div>`).join('')}
+        ${r.drugs.map(d => `<div style="font-size:13px;padding:4px 0;border-bottom:1px solid var(--border);"><strong>${escapeHTML(d.name)}</strong> - ${escapeHTML(d.dose)} x ${escapeHTML(d.qty)} (${escapeHTML(d.usage)})</div>`).join('')}
       </div>
-    </div>`).join('');
+    </div>`).join('') : '<div class="empty-state">Chưa có đơn thuốc mới trong phiên làm việc này</div>';
 }
 
 // ==================== HỒ SƠ BN ====================
 function renderHSList() {
-  const search = document.getElementById('hsSearch').value.toLowerCase();
-  let data = patients;
-  if (search) data = data.filter(p => p.name.toLowerCase().includes(search) || p.phone.includes(search) || p.stt.toLowerCase().includes(search));
+  const search = normalizeText(getEl('hsSearch')?.value || '');
+  let data = allPatients.length ? [...allPatients] : [...patients];
+  if (search) data = data.filter(p => normalizeText(p.name).includes(search) || normalizeText(p.phone).includes(search) || normalizeText(p.MaBN).includes(search));
 
-  document.getElementById('hsList').innerHTML = data.map(p => `
+  const list = getEl('hsList');
+  if (!list) return;
+  list.innerHTML = data.length ? data.map(p => `
     <div class="card" style="margin-bottom:10px;">
-      <div class="card-header" style="cursor:pointer;" onclick="viewHoso(${p.id})">
+      <div class="card-header" style="cursor:pointer;" onclick="viewHoso('${escapeHTML(p.MaBN)}')">
         <div class="card-header-left">
           <div class="card-icon">👤</div>
-          <div><div class="card-title">${p.name} <span style="font-weight:400;color:var(--text-muted);">${p.stt}</span></div><div class="card-desc">${p.phone} · ${new Date().getFullYear()-p.yob} tuổi · ${p.gender}</div></div>
+          <div><div class="card-title">${escapeHTML(p.name)} <span style="font-weight:400;color:var(--text-muted);">${escapeHTML(p.MaBN)}</span></div><div class="card-desc">${escapeHTML(p.phone)} · ${escapeHTML(p.age || '')} tuổi · ${escapeHTML(p.gender)}</div></div>
         </div>
         <button class="btn btn-outline btn-sm">👁️ Xem</button>
       </div>
-    </div>`).join('');
+    </div>`).join('') : '<div class="empty-state">Không tìm thấy hồ sơ bệnh nhân</div>';
 }
 
-function viewHoso(id) {
-  const p = patients.find(x => x.id === id);
-  if (!p) return;
-  document.getElementById('hosoContent').innerHTML = `
-    <div style="display:flex;align-items:center;gap:16px;margin-bottom:16px;">
-      <div style="width:60px;height:60px;border-radius:14px;background:var(--primary);display:flex;align-items:center;justify-content:center;color:#fff;font-size:24px;font-weight:700;">${p.name.split(' ').pop()[0]}</div>
-      <div><div style="font-size:18px;font-weight:700;">${p.name}</div><div style="font-size:13px;color:var(--text-sub);">${p.stt} · ${p.yob} · ${p.gender}</div></div>
-    </div>
-    <div class="record-grid">
-      <div class="record-item"><div class="record-label">Số điện thoại</div><div class="record-value">${p.phone}</div></div>
-      <div class="record-item"><div class="record-label">Cân nặng</div><div class="record-value">${p.weight} kg</div></div>
-      <div class="record-item"><div class="record-label">Chiều cao</div><div class="record-value">${p.height} cm</div></div>
-      <div class="record-item"><div class="record-label">BMI</div><div class="record-value">${(p.weight/((p.height/100)**2)).toFixed(1)}</div></div>
-      <div class="record-item" style="grid-column:1/-1;"><div class="record-label">Tiền sử bệnh</div><div class="record-value">${p.history}</div></div>
-      <div class="record-item" style="grid-column:1/-1;"><div class="record-label">Dị ứng</div><div class="record-value">${p.allergy}</div></div>
-      <div class="record-item" style="grid-column:1/-1;"><div class="record-label">Triệu chứng hiện tại</div><div class="record-value">${p.symptom}</div></div>
-    </div>
-    <div style="margin-top:16px;">
-      <div style="font-size:13px;font-weight:600;color:var(--primary-dark);margin-bottom:8px;">Lịch sử đơn thuốc gần đây</div>
-      ${rxHistory.filter(r => r.patient === p.name).map(r => `<div style="font-size:12px;padding:6px 0;border-bottom:1px solid var(--border);">${r.date}: ${r.diagnosis} - ${r.drugs.map(d=>d.name).join(', ')}</div>`).join('') || '<div style="font-size:12px;color:var(--text-muted);">Chưa có đơn thuốc</div>'}
-    </div>`;
-  openModal('modal-hoso');
+async function viewHoso(maBN) {
+  try {
+    const detail = await fetchJson('/api/doctor/patient/' + encodeURIComponent(maBN));
+    const p = normalizePatient(detail);
+    getEl('hosoContent').innerHTML = `
+      <div style="display:flex;align-items:center;gap:16px;margin-bottom:16px;">
+        <div style="width:60px;height:60px;border-radius:14px;background:var(--primary);display:flex;align-items:center;justify-content:center;color:#fff;font-size:24px;font-weight:700;">${escapeHTML(p.name.split(' ').pop()?.[0] || 'B')}</div>
+        <div><div style="font-size:18px;font-weight:700;">${escapeHTML(p.name)}</div><div style="font-size:13px;color:var(--text-sub);">${escapeHTML(p.MaBN)} · ${escapeHTML(p.yob)} · ${escapeHTML(p.gender)}</div></div>
+      </div>
+      <div class="record-grid">
+        <div class="record-item"><div class="record-label">Số điện thoại</div><div class="record-value">${escapeHTML(p.phone)}</div></div>
+        <div class="record-item"><div class="record-label">Nhóm máu</div><div class="record-value">${escapeHTML(p.blood || '---')}</div></div>
+        <div class="record-item"><div class="record-label">Loại ưu tiên</div><div class="record-value">${escapeHTML(p.priority)}</div></div>
+        <div class="record-item"><div class="record-label">Mã hồ sơ</div><div class="record-value">${escapeHTML(p.MaHS || '---')}</div></div>
+        <div class="record-item" style="grid-column:1/-1;"><div class="record-label">Tiền sử bệnh</div><div class="record-value">${escapeHTML(p.history || 'Không có')}</div></div>
+        <div class="record-item" style="grid-column:1/-1;"><div class="record-label">Bệnh nền</div><div class="record-value">${escapeHTML(p.underlying || 'Không có')}</div></div>
+        <div class="record-item" style="grid-column:1/-1;"><div class="record-label">Dị ứng</div><div class="record-value">${escapeHTML(p.allergy || 'Không có')}</div></div>
+      </div>`;
+    openModal('modal-hoso');
+  } catch (err) {
+    showToast('Không xem được hồ sơ: ' + err.message, 'error');
+  }
 }
 
 // ==================== XỬ LÝ ====================
 function xulyBN() {
-  const patientName = document.getElementById('xl-patient').value;
-  const doctor = document.getElementById('xl-doctor').value;
-  const action = document.getElementById('xl-action').value;
-  const reason = document.getElementById('xl-reason').value;
-  if (!patientName || !reason) { showToast('Vui lòng nhập đầy đủ!','error'); return; }
-
-  const p = patients.find(x => x.name === patientName);
-  if (p) {
-    if (action === 'hold') p.status = 'hold';
-    else if (action === 'next') p.status = 'waiting';
+  const patientName = getEl('xl-patient').value;
+  const doctor = getEl('xl-doctor').value;
+  const action = getEl('xl-action').value;
+  const reason = getEl('xl-reason').value;
+  if (!patientName || !reason) {
+    showToast('Vui lòng nhập đầy đủ!', 'error');
+    return;
   }
-  transferLog.unshift({ time: new Date().toLocaleString('vi-VN'), patient: patientName, doctor, action: action==='transfer'?'Chuyển':action==='hold'?'Treo':'Next hồ sơ', reason });
-  savePatientsToQueue();
-  showToast(`Đã ${action==='transfer'?'chuyển':action==='hold'?'treo':'next hồ sơ cho'} ${patientName}`,`success`);
-  renderTransferLog(); updateDash(); renderBNList(); renderKBPatients();
-  document.getElementById('xl-reason').value = '';
+
+  transferLog.unshift({ time: new Date().toLocaleString('vi-VN'), patient: patientName, doctor, action: action === 'transfer' ? 'Chuyển' : action === 'hold' ? 'Treo' : 'Next hồ sơ', reason });
+  showToast(`Đã ghi nhận xử lý ${patientName}`, 'success');
+  renderTransferLog();
+  getEl('xl-reason').value = '';
 }
 
 function renderTransferLog() {
-  const c = document.getElementById('transferLog');
-  // Populate patient select
-  const sel = document.getElementById('xl-patient');
-  if (sel) sel.innerHTML = patients.filter(p => p.status !== 'done').map(p => `<option>${p.name}</option>`).join('');
-
-  if (!transferLog.length) { c.innerHTML = '<div class="empty-state">Chưa có bản ghi chuyển/treo</div>'; return; }
+  const c = getEl('transferLog');
+  const sel = getEl('xl-patient');
+  if (sel) sel.innerHTML = patients.map(p => `<option>${escapeHTML(p.name)}</option>`).join('');
+  if (!c) return;
+  if (!transferLog.length) {
+    c.innerHTML = '<div class="empty-state">Chưa có bản ghi chuyển/treo</div>';
+    return;
+  }
   c.innerHTML = transferLog.map(t => `
     <div class="patient-queue-item">
-      <div class="pq-info"><div class="pq-name">${t.patient}</div><div class="pq-meta">${t.time} · ${t.action} → ${t.doctor}</div></div>
-      <span class="pq-badge waiting">${t.action}</span>
+      <div class="pq-info"><div class="pq-name">${escapeHTML(t.patient)}</div><div class="pq-meta">${escapeHTML(t.time)} · ${escapeHTML(t.action)} → ${escapeHTML(t.doctor)}</div></div>
+      <span class="pq-badge waiting">${escapeHTML(t.action)}</span>
     </div>`).join('');
 }
 
 // ==================== DOSE CALC ====================
 function autoFillDose() {
-  const sel = document.getElementById('dc-drug');
-  const opt = sel.options[sel.selectedIndex];
-  if (opt.dataset.dose) document.getElementById('dc-dose').value = opt.dataset.dose;
+  const sel = getEl('dc-drug');
+  const opt = sel?.options?.[sel.selectedIndex];
+  if (!opt) return;
+  getEl('dc-dose').value = opt.dataset.dose || '';
+  if (opt.dataset.note) {
+    safeSetText('doseDetail', `Gợi ý từ database: ${opt.dataset.name || opt.textContent}. ${opt.dataset.note}`);
+    getEl('doseResult').style.display = 'block';
+    safeSetText('doseValue', opt.dataset.dose ? `${opt.dataset.dose} mg/kg` : 'Chưa có liều mg/kg');
+  }
 }
+
 function calcDose() {
-  const dose = parseFloat(document.getElementById('dc-dose').value);
-  const weight = parseFloat(document.getElementById('dc-weight').value);
-  const times = parseInt(document.getElementById('dc-times').value);
-  const drug = document.getElementById('dc-drug').value;
-  if (!dose || !weight || !times || !drug) { showToast('Vui lòng nhập đầy đủ!','error'); return; }
+  const dose = parseFloat(getEl('dc-dose').value);
+  const weight = parseFloat(getEl('dc-weight').value);
+  const times = parseInt(getEl('dc-times').value);
+  const sel = getEl('dc-drug');
+  const drug = sel.value;
+  const opt = sel.options[sel.selectedIndex];
+  if (!drug) {
+    showToast('Vui lòng chọn thuốc!', 'error');
+    return;
+  }
+  if (!dose) {
+    showToast('Thuốc này chưa có liều chuẩn mg/kg. Hãy nhập liều chuẩn thủ công.', 'warning');
+    getEl('dc-dose').focus();
+    return;
+  }
+  if (!weight || !times) {
+    showToast('Vui lòng nhập cân nặng và số lần/ngày!', 'error');
+    return;
+  }
   const totalMg = dose * weight;
   const perDose = totalMg / times;
-  document.getElementById('doseResult').style.display = 'block';
-  document.getElementById('doseValue').textContent = perDose.toFixed(1) + ' mg / lần';
-  document.getElementById('doseDetail').textContent = `Tổng liều ngày: ${totalMg.toFixed(1)} mg, chia ${times} lần`;
+  getEl('doseResult').style.display = 'block';
+  safeSetText('doseValue', perDose.toFixed(1) + ' mg / lần');
+  safeSetText('doseDetail', `${opt?.dataset?.name || opt?.textContent || 'Thuốc'}: tổng liều ngày ${totalMg.toFixed(1)} mg, chia ${times} lần`);
 }
 
 // ==================== GLOBAL SEARCH ====================
 function globalSearch() {
-  const q = document.getElementById('globalSearch').value.toLowerCase();
+  const q = normalizeText(getEl('globalSearch').value);
   if (!q) return;
-  // Auto switch to relevant page based on search
-  const found = patients.find(p => p.name.toLowerCase().includes(q));
-  if (found) { showPage('benhnhan', document.querySelectorAll('.sidebar-link')[1]); document.getElementById('bnSearch').value = q; renderBNList(); }
+  const found = [...patients, ...allPatients].find(p => normalizeText(p.name).includes(q) || normalizeText(p.MaBN).includes(q));
+  if (found) {
+    showPage('benhnhan', document.querySelectorAll('.sidebar-link')[1]);
+    getEl('bnSearch').value = getEl('globalSearch').value;
+    renderBNList();
+  }
 }
 
 // ==================== MODAL ====================
-function openModal(id) { document.getElementById(id).classList.add('open'); }
-function closeModal(id) { document.getElementById(id).classList.remove('open'); }
-document.querySelectorAll('.modal-overlay').forEach(o => o.addEventListener('click', e => { if(e.target===o) o.classList.remove('open'); }));
+function openModal(id) { getEl(id)?.classList.add('open'); }
+function closeModal(id) { getEl(id)?.classList.remove('open'); }
+document.querySelectorAll('.modal-overlay').forEach(o => o.addEventListener('click', e => { if (e.target === o) o.classList.remove('open'); }));
 
 // ==================== TOAST ====================
 function showToast(msg, type) {
-  const c = document.getElementById('toastContainer');
-  const t = document.createElement('div'); t.className = 'toast ' + (type||''); t.innerHTML = '<div>'+msg+'</div>';
-  c.appendChild(t); setTimeout(()=>t.classList.add('show'),10);
-  setTimeout(()=>{t.classList.remove('show');setTimeout(()=>t.remove(),300);},3500);
+  const c = getEl('toastContainer');
+  if (!c) return alert(msg);
+  const t = document.createElement('div');
+  t.className = 'toast ' + (type || '');
+  t.innerHTML = '<div>' + escapeHTML(msg) + '</div>';
+  c.appendChild(t);
+  setTimeout(() => t.classList.add('show'), 10);
+  setTimeout(() => { t.classList.remove('show'); setTimeout(() => t.remove(), 300); }, 3500);
 }
 </script>
+
 </body>
 </html>
