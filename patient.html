@@ -5,7 +5,53 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>eHealthCare - Bệnh nhân</title>
-  <script src="api-mock.js"></script>
+  <script>
+    const API_BASE = window.API_BASE || "http://localhost:3000";
+
+    const API = {
+      async request(path, options = {}) {
+        const response = await fetch(API_BASE + path, {
+          headers: {
+            "Content-Type": "application/json",
+            ...(options.headers || {})
+          },
+          ...options
+        });
+
+        let data = null;
+        const text = await response.text();
+        if (text) {
+          try { data = JSON.parse(text); }
+          catch { data = text; }
+        }
+
+        if (!response.ok) {
+          const message = data?.message || data?.error || `Lỗi API ${response.status}`;
+          throw new Error(message);
+        }
+
+        return data;
+      },
+      get(path) {
+        return this.request(path);
+      },
+      post(path, body) {
+        return this.request(path, {
+          method: "POST",
+          body: JSON.stringify(body || {})
+        });
+      },
+      put(path, body) {
+        return this.request(path, {
+          method: "PUT",
+          body: JSON.stringify(body || {})
+        });
+      },
+      delete(path) {
+        return this.request(path, { method: "DELETE" });
+      }
+    };
+  </script>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;600;700&display=swap');
 
@@ -1756,7 +1802,10 @@
       window.location.href = 'index.html';
     }
 
-    const CURRENT_BN_ID = user.maBN || 'BN001';
+    let CURRENT_BN_ID = (user.maBN || user.MaBN || 'BN001').toString().trim();
+    if (!/^BN\d+$/i.test(CURRENT_BN_ID)) CURRENT_BN_ID = 'BN001';
+    CURRENT_BN_ID = CURRENT_BN_ID.toUpperCase();
+    sessionStorage.setItem('user', JSON.stringify({ ...user, role: 'patient', maBN: CURRENT_BN_ID }));
 
     // ==================== DATA ====================
     let state = { spec: null, doctor: null, date: null, slot: null, bookings: [] };
@@ -1774,6 +1823,7 @@
       renderNotifications();
       renderCancelList();
       updateQueueStatus();
+      setInterval(updateQueueStatus, 15000);
       document.getElementById('pk-date').value = new Date().toISOString().split('T')[0];
       loadDoctorSelect();
       loadDeptSelect();
@@ -2187,100 +2237,57 @@
         else if (i === n) el.classList.add('active');
       }
     }
-
     async function submitBooking() {
       if (!state.spec || !state.doctor || !state.date || !state.slot) {
         showToast('Vui lòng chọn đầy đủ thông tin!', 'error');
         return;
       }
 
+      const submitBtn = document.querySelector('#bookingSummary .btn-primary');
+      const oldText = submitBtn ? submitBtn.innerHTML : '';
+      if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = '⏳ Đang đăng ký...';
+      }
+
       try {
-        const bn = await API.get(`/api/benh-nhan/${CURRENT_BN_ID}`);
-        if (!bn) {
-          showToast('Không tìm thấy thông tin bệnh nhân', 'error');
-          return;
-        }
+        const symptom = document.getElementById('symptomInput').value.trim();
 
-        // Find room and queue for this doctor
-        const room = DB.get('PhongKham').find(p => p.MaPhongKham === state.doctor.MaPhongKham);
-        if (!room) {
-          showToast('Không tìm thấy phòng khám', 'error');
-          return;
-        }
-
-        const hd = DB.get('HangDoi').find(h => h.MaPhongKham === room.MaPhongKham);
-        if (!hd) {
-          showToast('Không tìm thấy hàng đợi', 'error');
-          return;
-        }
-
-        // 1. Create LichKham
-        const lich = await API.post('/api/lich-kham', {
+        const result = await API.post('/api/patient/booking', {
           MaBN: CURRENT_BN_ID,
-          MaPhongKham: room.MaPhongKham,
-          NgayGio: `${state.date} ${state.slot}:00`,
-          TrangThai: 'Đã đặt'
+          MaBS: state.doctor.MaBS,
+          MaPhongKham: state.doctor.MaPhongKham,
+          NgayKham: state.date,
+          GioKham: state.slot,
+          TrieuChung: symptom,
+          GhiChu: `Đăng ký online - ${state.spec.TenCK}`
         });
 
-        // 2. Create DonDangKy
-        await API.post('/api/don-dang-ky', {
-          MaBN: CURRENT_BN_ID,
-          MaPhongKham: room.MaPhongKham,
-          NgayDK: new Date().toISOString().split('T')[0],
-          TrieuChung: document.getElementById('symptomInput').value,
-          TrangThai: 'Chờ xác nhận'
-        });
+        const ticket = result.ticket || {};
+        const patient = result.patient || currentPatient || {};
+        const room = result.room || {};
+        const waitingBefore = Number(result.soNguoiTruocBan || 0);
 
-        // 3. Create SoThuTu
-        const sttVal = hd.SoThuTuTiepTheo || 1;
-        const sttPrefix = {
-          'Nội khoa': 'N', 'Ngoại khoa': 'NG', 'Nhi khoa': 'NH',
-          'Da liễu': 'DL', 'Tim mạch': 'TM', 'Thần kinh': 'TK',
-          'Sản phụ khoa': 'SP', 'Mắt': 'M', 'Tai Mũi Họng': 'TMH',
-          'Cơ xương khớp': 'CXK'
-        }[state.spec.TenCK] || 'A';
-        const sttString = `${sttPrefix}${String(sttVal).padStart(3, '0')}`;
-
-        const stt = await API.post('/api/so-thu-tu', {
-          MaBN: CURRENT_BN_ID,
-          MaHangDoi: hd.MaHangDoi,
-          MaLich: lich.MaLich,
-          SoThuTu: sttVal,
-          TrangThaiThe: 'WAITING',
-          ThoiGianCap: new Date().toISOString(),
-          ThoiGianDuKienKham: new Date(Date.now() + (hd.SoLuongDangCho || 0) * 15 * 60000).toISOString()
-        });
-
-        // Update HangDoi
-        DB.update('HangDoi', 'MaHangDoi', hd.MaHangDoi, {
-          SoThuTuTiepTheo: sttVal + 1,
-          SoLuongDangCho: (hd.SoLuongDangCho || 0) + 1
-        });
-
-        // 4. Create PhieuTiepNhan
-        await API.post('/api/phieu-tiep-nhan', {
-          MaBN: CURRENT_BN_ID,
-          SoThuTu: stt.MaThe,
-          NgayTiepNhan: new Date().toISOString(),
-          TrangThai: 'Đã cấp'
-        });
-
-        // Show Ticket Modal
-        document.getElementById('t-stt').textContent = sttString;
-        document.getElementById('t-name').textContent = bn.HoTen;
-        document.getElementById('t-dob').textContent = formatDate(bn.NgaySinh);
+        document.getElementById('t-stt').textContent = ticket.SoThuTu || '---';
+        document.getElementById('t-name').textContent = patient.HoTen || currentPatient?.HoTen || '---';
+        document.getElementById('t-dob').textContent = formatDate(patient.NgaySinh || currentPatient?.NgaySinh);
         document.getElementById('t-dept').textContent = state.spec.TenCK;
         document.getElementById('t-doc').textContent = state.doctor.HoTen;
-        document.getElementById('t-room').textContent = `${room.TenPhongKham} - Phòng ${room.SoPhong}`;
+        document.getElementById('t-room').textContent = room.TenPhongKham
+          ? `${room.TenPhongKham} - Phòng ${room.SoPhong || ''}`
+          : (state.doctor.MaPhongKham || '---');
         document.getElementById('t-date').textContent = formatDate(state.date);
         document.getElementById('t-time').textContent = state.slot;
-        document.getElementById('t-waiting').textContent = hd.SoLuongDangCho || 0;
-        document.getElementById('t-est').textContent = (hd.SoLuongDangCho || 0) * 15;
+        document.getElementById('t-waiting').textContent = waitingBefore;
+        document.getElementById('t-est').textContent = waitingBefore * 15;
 
         openModal('modal-ticket');
-        showToast('Đăng ký thành công!', 'success');
+        showToast('Đăng ký khám và cấp số thứ tự thành công!', 'success');
 
-        // Reset state
+        await updateQueueStatus();
+        await renderCancelList();
+        await renderNotifications();
+
         state = { spec: null, doctor: null, date: state.date, slot: null, bookings: [] };
         document.querySelectorAll('.spec-chip').forEach(c => c.classList.remove('selected'));
         document.getElementById('card-doctor').style.opacity = '0.5';
@@ -2293,15 +2300,21 @@
 
       } catch (e) {
         console.error('submitBooking error:', e);
-        showToast('Có lỗi xảy ra khi đặt lịch. Vui lòng thử lại.', 'error');
+        showToast('Có lỗi xảy ra khi đặt lịch: ' + e.message, 'error');
+      } finally {
+        if (submitBtn) {
+          submitBtn.disabled = false;
+          submitBtn.innerHTML = oldText || '✅ Hoàn tất đăng ký';
+        }
       }
     }
+
 
     // ==================== QUEUE STATUS ====================
     async function updateQueueStatus() {
       try {
         const res = await API.get(`/api/hang-doi/trang-thai?maBN=${CURRENT_BN_ID}`);
-        if (res.error) {
+        if (res.error || !res.ticket) {
           document.getElementById('q-current').textContent = '---';
           document.getElementById('q-serving').textContent = '---';
           document.getElementById('q-wait').textContent = '0';
@@ -2314,41 +2327,43 @@
           return;
         }
 
-        document.getElementById('q-current').textContent = res.soThuTuCuaBN || '---';
+        const ticket = res.ticket;
+
+        document.getElementById('q-current').textContent = res.soThuTuCuaBN || ticket.SoThuTu || '---';
         document.getElementById('q-serving').textContent = res.soThuTuDangGoi || '---';
         document.getElementById('q-wait').textContent = res.soNguoiTruocBan || 0;
         document.getElementById('q-time').textContent = `Ước tính: ~${res.uocTinhPhut || 0} phút`;
 
-        // Update ticket card
-        const ticket = DB.get('SoThuTu').find(s => s.MaBN === CURRENT_BN_ID && (s.TrangThaiThe === 'WAITING' || s.TrangThaiThe === 'CALLED'));
-        if (ticket) {
-          const hd = DB.get('HangDoi').find(h => h.MaHangDoi === ticket.MaHangDoi);
-          const room = hd ? DB.get('PhongKham').find(p => p.MaPhongKham === hd.MaPhongKham) : null;
+        document.getElementById('ticketNum').textContent = ticket.SoThuTu || '---';
+        document.getElementById('ticketRoom').textContent =
+          ticket.TenPhongKham
+            ? `${ticket.TenPhongKham} - Phòng ${ticket.SoPhong || ''}`
+            : '---';
+        document.getElementById('ticketTime').textContent =
+          ticket.ThoiGianDuKienKham
+            ? 'Dự kiến: ' + formatDateTime(ticket.ThoiGianDuKienKham)
+            : '---';
 
-          document.getElementById('ticketNum').textContent = ticket.SoThuTu;
-          document.getElementById('ticketRoom').textContent = room ? `${room.TenPhongKham} - Phòng ${room.SoPhong}` : '---';
-          document.getElementById('ticketTime').textContent = ticket.ThoiGianDuKienKham ? 'Dự kiến: ' + formatDateTime(ticket.ThoiGianDuKienKham) : '---';
+        const statusMap = {
+          'WAITING': { text: 'Đang chờ khám', cls: 'badge-waiting' },
+          'CALLED': { text: 'Đang gọi khám', cls: 'badge-active' },
+          'DONE': { text: 'Hoàn tất', cls: 'badge-done' },
+          'SKIPPED': { text: 'Bỏ lượt', cls: 'badge-cancel' },
+          'CANCELLED': { text: 'Đã hủy', cls: 'badge-cancel' }
+        };
+        const st = statusMap[ticket.TrangThaiThe] || { text: ticket.TrangThaiThe, cls: 'badge-waiting' };
+        const badge = document.getElementById('ticketStatus');
+        badge.textContent = st.text;
+        badge.className = 'badge ' + st.cls;
 
-          const statusMap = {
-            'WAITING': { text: 'Đang chờ khám', cls: 'badge-waiting' },
-            'CALLED': { text: 'Đang gọi khám', cls: 'badge-active' },
-            'DONE': { text: 'Hoàn tất', cls: 'badge-done' },
-            'SKIPPED': { text: 'Bỏ lượt', cls: 'badge-cancel' },
-            'CANCELLED': { text: 'Đã hủy', cls: 'badge-cancel' }
-          };
-          const st = statusMap[ticket.TrangThaiThe] || { text: ticket.TrangThaiThe, cls: 'badge-waiting' };
-          const badge = document.getElementById('ticketStatus');
-          badge.textContent = st.text;
-          badge.className = 'badge ' + st.cls;
-
-          if (ticket.TrangThaiThe === 'CALLED') {
-            showToast('🔔 ĐẾN LƯỢT BẠN! Vui lòng vào phòng khám.', 'success');
-          }
+        if (ticket.TrangThaiThe === 'CALLED') {
+          showToast('🔔 ĐẾN LƯỢT BẠN! Vui lòng vào phòng khám.', 'success');
         }
       } catch (e) {
         console.error('updateQueueStatus error:', e);
       }
     }
+
 
     // Auto refresh queue every 15 seconds
     setInterval(updateQueueStatus, 15000);
@@ -2535,9 +2550,11 @@
 
         tbody.innerHTML = lichKham.map(lk => {
           const room = phongKham.find(p => p.MaPhongKham === lk.MaPhongKham);
-          const ngayGio = lk.NgayGio ? lk.NgayGio.split(' ') : ['', ''];
-          const date = ngayGio[0];
-          const time = ngayGio[1] ? ngayGio[1].substring(0, 5) : '';
+          const d = lk.NgayGio ? new Date(lk.NgayGio) : null;
+          const date = d && !isNaN(d) ? d.toISOString().split('T')[0] : '';
+          const time = d && !isNaN(d)
+            ? d.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })
+            : '';
 
           const statusMap = {
             'Đã đặt': { cls: 'badge-booked', text: 'Đã đặt' },
@@ -2573,26 +2590,20 @@
       cancelBookingId = id;
       openModal('modal-cancel');
     }
-
     async function confirmCancel() {
       try {
         await API.put(`/api/lich-kham/${cancelBookingId}`, { TrangThai: 'Đã hủy' });
 
-        // Also update SoThuTu if exists
-        const sttList = DB.get('SoThuTu').filter(s => s.MaLich === cancelBookingId);
-        for (const stt of sttList) {
-          await API.put(`/api/so-thu-tu/${stt.MaThe}`, { TrangThaiThe: 'CANCELLED' });
-        }
-
         closeModal('modal-cancel');
         showToast('Đã hủy lịch khám!', 'success');
-        renderCancelList();
-        updateQueueStatus();
+        await renderCancelList();
+        await updateQueueStatus();
       } catch (e) {
         console.error('confirmCancel error:', e);
-        showToast('Có lỗi xảy ra khi hủy lịch', 'error');
+        showToast('Có lỗi xảy ra khi hủy lịch: ' + e.message, 'error');
       }
     }
+
 
     // ==================== PROFILE ====================
     async function saveProfile() {
@@ -2633,12 +2644,9 @@
       showToast('Đã đặt lại form', 'warning');
     }
     function resetDatabase() {
-      if (confirm('Bạn có chắc muốn xóa tất cả dữ liệu local và khôi phục về mặc định?')) {
-        localStorage.clear();
-        sessionStorage.clear();
-        location.reload();
-      }
+      showToast('Hệ thống đang dùng database thật. Chức năng khôi phục localStorage đã tắt.', 'warning');
     }
+
 
     // ==================== MODAL ====================
     function openModal(id) { document.getElementById(id).classList.add('open'); }
